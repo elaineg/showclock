@@ -25,4 +25,4 @@ Out of scope:
 - No audio cues, speaker messages, themes, or CSV/ICS import-export.
 - No sub-minute drift precision guarantees; drift is displayed in whole minutes.
 
-Production URL: TBD
+Production URL: https://showclock-nu.vercel.app
