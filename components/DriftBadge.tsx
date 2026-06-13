@@ -24,7 +24,7 @@ export default function DriftBadge({
     <span
       data-testid="drift-badge"
       className={`inline-block rounded-full font-bold ${color} ${
-        big ? "px-5 py-2 text-2xl" : "px-3 py-1 text-sm"
+        big ? "px-6 py-3 text-7xl" : "px-3 py-1 text-sm"
       }`}
     >
       {label}

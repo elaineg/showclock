@@ -121,7 +121,7 @@ export default function Presenter({
             {/* G2: countdown is secondary — smaller, below the drift badge */}
             <div
               data-testid="countdown"
-              className={`mt-2 font-mono text-6xl font-bold tabular-nums ${
+              className={`mt-2 font-mono text-4xl font-bold tabular-nums ${
                 overtime ? "text-rose-600" : ""
               }`}
             >
