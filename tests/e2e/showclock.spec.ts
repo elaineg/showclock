@@ -73,13 +73,14 @@ test("check 1: pasting three formats shows Intro/Demo/Q&A with 9:00, 9:10, 9:30"
   const rows = plannerRows(page);
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText("Intro");
-  await expect(rows.nth(0)).toContainText("10 min");
+  // H3 changed the duration chip format from "10 min" to "10m"
+  await expect(rows.nth(0)).toContainText(/10\s*m/);
   await expect(rows.nth(0)).toContainText("9:00 AM");
   await expect(rows.nth(1)).toContainText("Demo");
-  await expect(rows.nth(1)).toContainText("20 min");
+  await expect(rows.nth(1)).toContainText(/20\s*m/);
   await expect(rows.nth(1)).toContainText("9:10 AM");
   await expect(rows.nth(2)).toContainText("Q&A");
-  await expect(rows.nth(2)).toContainText("15 min");
+  await expect(rows.nth(2)).toContainText(/15\s*m/);
   await expect(rows.nth(2)).toContainText("9:30 AM");
 });
 
@@ -202,4 +203,35 @@ test("check 8: reloading the presenter restores item + drift from the URL alone 
   await expect(page.getByRole("button", { name: "Back" })).toBeVisible();
   // state came from the URL, not a backend
   expect(apiCalls, `unexpected API calls: ${apiCalls.join(", ")}`).toEqual([]);
+});
+
+test("Sam's path: paste agenda → Start → countdown ticks → copy button shows Copied! then reverts", async ({ page }) => {
+  // Sam's exact path: paste own agenda, press Start, wait for countdown to tick
+  // multiple times, THEN click copy — the button's own label must swap to "Copied!"
+  // and must revert to "Copy current link" after ~1.5s.
+  await fillPlan(page);
+  const hhmm = await currentMinuteSafe(page);
+  await page.locator("#start-time").fill(hhmm);
+  await page.getByRole("button", { name: "Start show" }).click();
+  await expect(countdown(page)).toBeVisible();
+
+  // Wait ~2s so the 500ms clock ticks at least 4 times (replicates the live running session)
+  await page.waitForTimeout(2200);
+
+  // Grant clipboard permissions and mock so the copy actually succeeds in CI
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+
+  const copyBtn = page.getByTestId("copy-link-btn");
+  await expect(copyBtn).toBeVisible();
+
+  // Confirm the button starts with its original label
+  await expect(copyBtn).toHaveText("Copy current link");
+
+  await copyBtn.click();
+
+  // The clicked button's own text must change to "✓ Copied!" (Sam's exact complaint)
+  await expect(copyBtn).toContainText("Copied", { timeout: 2000 });
+
+  // Must revert to original label after ~1.5s (allow up to 3.5s total)
+  await expect(copyBtn).toHaveText("Copy current link", { timeout: 3500 });
 });

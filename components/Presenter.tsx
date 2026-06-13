@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   driftMinutes,
   fmtClock,
@@ -27,6 +27,9 @@ export default function Presenter({
 }) {
   const now = useNow();
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+  // Ref-stable timeout so the per-500ms re-render from useNow() cannot clobber
+  // the "Copied!" state: we clear+reset on each click, never derive from now.
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startMs = startMsFromHHMM(session.s, session.a[0]);
   const planned = plannedStarts(items, startMs);
   const live = liveState(items, planned, session.a, now || session.a[session.a.length - 1]);
@@ -48,14 +51,24 @@ export default function Presenter({
   };
   const exit = () => setSession({ t: session.t, s: session.s, a: [] }, true);
 
-  // G1 + G7: persistent "copy current link" button with "Copied!" inline confirmation
+  // G1 + G7: persistent "copy current link" button with "Copied!" inline confirmation.
+  // The timeout is stored in a ref so the per-500ms useNow() re-render cannot clobber
+  // the copied state — we clear+reset the timer on each click.
   const copyViewLink = async () => {
     const url =
       window.location.origin + window.location.pathname + encodeHash(session, true);
     const ok = await copyToClipboard(url);
     if (ok) {
+      // Clear any in-flight revert timer before setting copied state
+      if (copyTimerRef.current !== null) {
+        clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = null;
+      }
       setCopyState("copied");
-      setTimeout(() => setCopyState("idle"), 1500);
+      copyTimerRef.current = setTimeout(() => {
+        setCopyState("idle");
+        copyTimerRef.current = null;
+      }, 1500);
     } else {
       window.prompt("Copy this snapshot link:", url);
     }
@@ -222,19 +235,25 @@ export default function Presenter({
       </section>
 
       {/* G1 + G7: persistent copy snapshot link — always visible to presenter, with inline confirmation */}
+      {/* Visually-hidden aria-live node announces the copy confirmation to screen readers */}
+      <span
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {copyState === "copied" ? "Link copied to clipboard" : ""}
+      </span>
+
       {!readOnly && (
         <section className="mt-6 flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={copyViewLink}
             data-testid="copy-link-btn"
+            aria-label={copyState === "copied" ? "Copied!" : "Copy current link"}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold dark:border-gray-700"
           >
-            {copyState === "copied" ? (
-              <span role="status">&#10003; Copied!</span>
-            ) : (
-              "Copy current link"
-            )}
+            {copyState === "copied" ? "✓ Copied!" : "Copy current link"}
           </button>
           {/* G7: snapshot framing */}
           <span className="text-xs text-gray-400">Shares a snapshot of right now.</span>
