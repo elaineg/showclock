@@ -12,6 +12,7 @@ import {
 } from "@/lib/agenda";
 import type { Session } from "@/lib/codec";
 import { encodeHash } from "@/lib/codec";
+import { copyToClipboard } from "@/lib/copyToClipboard";
 import { setSession, useNow } from "@/lib/store";
 import DriftBadge from "./DriftBadge";
 
@@ -51,13 +52,13 @@ export default function Presenter({
   const copyViewLink = async () => {
     const url =
       window.location.origin + window.location.pathname + encodeHash(session, true);
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
+    const ok = await copyToClipboard(url);
+    if (ok) {
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 1500);
+    } else {
       window.prompt("Copy this snapshot link:", url);
     }
-    setCopyState("copied");
-    setTimeout(() => setCopyState("idle"), 1500);
   };
 
   // G6: keyboard shortcuts — Space/→ = Next, ←/Backspace = Back

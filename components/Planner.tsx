@@ -39,14 +39,22 @@ export default function Planner({ session, now }: { session: Session | null; now
   const planned = startMs !== null ? plannedStarts(items, startMs) : [];
   const totalMin = items.reduce((s, it) => s + it.minutes, 0);
   const hasRundown = lines.length > 0;
-
   const update = (t: string, s: string) => setSession(t || s ? { t, s, a: [] } : null);
 
   const onStart = () => {
     if (items.length === 0 || !start) return;
     const id = Math.random().toString(36).slice(2, 10);
     claimOwnership(id);
-    setSession({ t: text, s: start, a: [Date.now()], id }, true);
+    const actualNow = Date.now();
+    // H2: if the chosen start time is in the past (>1 min ago), snap session.s to now
+    // so drift starts at 0 and doesn't alarm the presenter.
+    const intendedMs = startMsFromHHMM(start, actualNow);
+    let effectiveStart = start;
+    if (intendedMs < actualNow - 60_000) {
+      const d = new Date(actualNow);
+      effectiveStart = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    }
+    setSession({ t: text, s: effectiveStart, a: [actualNow], id }, true);
   };
 
   // G5: load a live-behind demo session directly into presenter view
@@ -138,9 +146,12 @@ export default function Planner({ session, now }: { session: Session | null; now
               const at = planned[lineItemIdx[i]];
               return (
                 <li key={i} className="flex items-center justify-between gap-3 px-3 py-2">
-                  <span className="min-w-0 truncate font-medium">{line.name}</span>
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium">{line.name}</span>
+                    {/* H3: parsed duration chip so users see their full input was understood */}
+                    <span className="ml-1.5 text-xs text-gray-400">&middot; {line.minutes}m</span>
+                  </span>
                   <span className="flex shrink-0 items-baseline gap-3">
-                    <span className="text-sm text-gray-500">{line.minutes} min</span>
                     <span className="font-mono text-base font-semibold tabular-nums">
                       {at !== undefined ? fmtClock(at) : "—"}
                     </span>

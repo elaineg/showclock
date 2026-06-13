@@ -179,3 +179,29 @@ describe("nextFiveMark", () => {
     expect(nextFiveMark(new Date(2026, 5, 12, 23, 58, 1).getTime())).toBe("00:00");
   });
 });
+
+describe("H2 — past-start snap guard", () => {
+  it("startMsFromHHMM resolves to earlier today when typed time is in the past", () => {
+    // Simulate: user typed "09:00" but it's now 14:30
+    const now = new Date(2026, 5, 12, 14, 30, 0, 0).getTime();
+    const intendedMs = startMsFromHHMM("09:00", now);
+    // intendedMs should be 9am same day — well before now
+    expect(intendedMs).toBeLessThan(now - 60_000);
+    // In the Planner onStart the snap condition fires, setting session.s to now's HH:MM
+    // so drift starts at 0 instead of -330 min behind.
+    const snappedHHMM = `${String(new Date(now).getHours()).padStart(2, "0")}:${String(new Date(now).getMinutes()).padStart(2, "0")}`;
+    const snappedMs = startMsFromHHMM(snappedHHMM, now);
+    // After snap, drift between snappedMs and now is ≤ 1 min (no scary number)
+    expect(Math.abs(snappedMs - now)).toBeLessThan(60_000);
+  });
+
+  it("liveState shows ~0 drift when session start = actual start (snapped case)", () => {
+    const items = itemsOf(parseAgenda("Welcome 10\nDemo 20"));
+    // Simulate: user started at 14:30, start time also set to 14:30 (snapped)
+    const startMs = new Date(2026, 5, 12, 14, 30, 0, 0).getTime();
+    const planned = plannedStarts(items, startMs);
+    // a[0] = startMs (session.a[0] = Date.now() in onStart, start=snapped HH:MM)
+    const live = liveState(items, planned, [startMs], startMs + 5_000);
+    expect(driftLabel(live.driftMs)).toBe("on time");
+  });
+});
