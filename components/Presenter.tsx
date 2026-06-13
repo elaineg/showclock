@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   driftMinutes,
   fmtClock,
@@ -25,12 +25,17 @@ export default function Presenter({
   readOnly: boolean;
 }) {
   const now = useNow();
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const startMs = startMsFromHHMM(session.s, session.a[0]);
   const planned = plannedStarts(items, startMs);
   const live = liveState(items, planned, session.a, now || session.a[session.a.length - 1]);
   const cur = items[live.current];
   const overtime = !live.ended && live.countdownMs < 0;
+
+  // G4: session is "started" only once there is at least 1 actual timestamp.
+  // session.a[0] = Start was pressed. But before Start this component isn't rendered
+  // (page.tsx only renders Presenter when running = a.length > 0).
+  // Inside Presenter: drift is live from Start. Nothing to clamp here — already correct.
 
   const next = () => setSession({ ...session, a: [...session.a, Date.now()] }, true);
   const back = () => {
@@ -42,28 +47,58 @@ export default function Presenter({
   };
   const exit = () => setSession({ t: session.t, s: session.s, a: [] }, true);
 
+  // G1 + G7: persistent "copy current link" button with "Copied!" inline confirmation
   const copyViewLink = async () => {
     const url =
       window.location.origin + window.location.pathname + encodeHash(session, true);
     try {
       await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     } catch {
-      window.prompt("Copy this view-only link:", url);
+      window.prompt("Copy this snapshot link:", url);
     }
+    setCopyState("copied");
+    setTimeout(() => setCopyState("idle"), 1500);
   };
+
+  // G6: keyboard shortcuts — Space/→ = Next, ←/Backspace = Back
+  useEffect(() => {
+    if (readOnly) return;
+    const handler = (e: KeyboardEvent) => {
+      // Don't intercept when focus is inside a form element
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === " " || e.key === "ArrowRight") {
+        e.preventDefault();
+        if (!live.ended) next();
+      } else if (e.key === "ArrowLeft" || e.key === "Backspace") {
+        e.preventDefault();
+        back();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readOnly, live.ended, session]);
 
   return (
     <main className="mx-auto flex w-full max-w-xl flex-col p-4 pb-10">
+      {/* G7: read-only snapshot banner */}
       {readOnly && (
-        <p className="mb-3 rounded-lg bg-gray-100 px-3 py-2 text-center text-xs text-gray-600 dark:bg-gray-900 dark:text-gray-400">
-          Snapshot view (read-only) — shows the session as of when this URL was made.
-          Re-copy the presenter&apos;s URL for the latest Next/Back state.
+        <p
+          role="status"
+          className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-center text-xs text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200"
+        >
+          You&apos;re viewing a snapshot — ask the host to re-share, or refresh, to see the latest.
         </p>
       )}
 
+      {/* G2: Drift badge is the topmost, largest element in presenter view */}
       <section className="text-center">
+        {/* G4: neutral until clock is live (now=0 = SSR/pre-hydration) */}
+        <div className="mb-4">
+          <DriftBadge driftMs={live.driftMs} big neutral={now === 0} />
+        </div>
+
         {live.ended ? (
           <>
             <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">
@@ -83,9 +118,10 @@ export default function Presenter({
             <h2 className="mt-1 break-words text-4xl font-extrabold leading-tight">
               {cur.name}
             </h2>
+            {/* G2: countdown is secondary — smaller, below the drift badge */}
             <div
               data-testid="countdown"
-              className={`mt-2 font-mono text-8xl font-bold tabular-nums ${
+              className={`mt-2 font-mono text-6xl font-bold tabular-nums ${
                 overtime ? "text-rose-600" : ""
               }`}
             >
@@ -97,9 +133,6 @@ export default function Presenter({
             </p>
           </>
         )}
-        <div className="mt-3">
-          <DriftBadge driftMs={live.driftMs} big />
-        </div>
       </section>
 
       {!readOnly && (
@@ -107,6 +140,7 @@ export default function Presenter({
           <button
             type="button"
             onClick={back}
+            aria-label="Back"
             className="w-1/3 rounded-2xl border-2 border-gray-300 py-4 text-xl font-bold dark:border-gray-700"
           >
             Back
@@ -115,6 +149,7 @@ export default function Presenter({
             <button
               type="button"
               onClick={next}
+              aria-label={live.current === items.length - 1 ? "Finish" : "Next"}
               className="w-2/3 rounded-2xl bg-emerald-600 py-4 text-2xl font-bold text-white"
             >
               {live.current === items.length - 1 ? "Finish" : "Next"}
@@ -129,6 +164,13 @@ export default function Presenter({
             </button>
           )}
         </section>
+      )}
+
+      {/* G6: keyboard shortcut hint */}
+      {!readOnly && (
+        <p className="mt-2 text-center text-xs text-gray-400">
+          Space = next · ← = back
+        </p>
       )}
 
       <section className="mt-8" aria-label="Rundown">
@@ -178,21 +220,23 @@ export default function Presenter({
         </p>
       </section>
 
+      {/* G1 + G7: persistent copy snapshot link — always visible to presenter, with inline confirmation */}
       {!readOnly && (
         <section className="mt-6 flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={copyViewLink}
+            data-testid="copy-link-btn"
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold dark:border-gray-700"
           >
-            Copy view-only link
+            {copyState === "copied" ? (
+              <span role="status">&#10003; Copied!</span>
+            ) : (
+              "Copy current link"
+            )}
           </button>
-          <span
-            aria-live="polite"
-            className={`text-sm text-emerald-600 ${copied ? "" : "invisible"}`}
-          >
-            Copied
-          </span>
+          {/* G7: snapshot framing */}
+          <span className="text-xs text-gray-400">Shares a snapshot of right now.</span>
           <button type="button" onClick={exit} className="text-sm text-gray-500 underline">
             End &amp; edit agenda
           </button>

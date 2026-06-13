@@ -96,6 +96,82 @@ describe("schedule", () => {
   });
 });
 
+describe("parseLine — unit handling (G3)", () => {
+  it('"90 second teaser" → 2 min (90s rounds to 2), name=teaser', () => {
+    const r = parseLine("90 second teaser");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("teaser");
+      expect(r.minutes).toBe(2); // 90s = 1.5 min → rounded to 2
+    }
+  });
+  it('"90 sec teaser" → 2 min', () => {
+    const r = parseLine("90 sec teaser");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") expect(r.minutes).toBe(2);
+  });
+  it('"teaser 90s" → trailing seconds parse', () => {
+    const r = parseLine("teaser 90s");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("teaser");
+      expect(r.minutes).toBe(2);
+    }
+  });
+  it('"1h Keynote" → 60 min', () => {
+    const r = parseLine("1h Keynote");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("Keynote");
+      expect(r.minutes).toBe(60);
+    }
+  });
+  it('"Keynote 1h" → 60 min', () => {
+    const r = parseLine("Keynote 1h");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("Keynote");
+      expect(r.minutes).toBe(60);
+    }
+  });
+  it('"1.5h Workshop" → 90 min', () => {
+    const r = parseLine("1.5h Workshop");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") expect(r.minutes).toBe(90);
+  });
+  it('"30s Lightning" → 1 min (minimum 1)', () => {
+    const r = parseLine("30s Lightning");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") expect(r.minutes).toBe(1);
+  });
+  it('"Intro 10" (no unit) → still 10 min (regression)', () => {
+    const r = parseLine("Intro 10");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") expect(r.minutes).toBe(10);
+  });
+  it('"Demo - 20 min" → still 20 min (regression)', () => {
+    const r = parseLine("Demo - 20 min");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") expect(r.minutes).toBe(20);
+  });
+  it('"15 Q&A" (leading, no unit) → still 15 min (regression)', () => {
+    const r = parseLine("15 Q&A");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") expect(r.minutes).toBe(15);
+  });
+});
+
+describe("liveState — cold drift neutral (G4)", () => {
+  it("drift is 0 when actuals has only the start entry (session just started)", () => {
+    const items = itemsOf(parseAgenda("Intro 10\nDemo 20"));
+    const day = new Date(2026, 5, 12, 9, 0, 0, 0).getTime();
+    const planned = plannedStarts(items, day);
+    // actuals = [startMs] — just started, now = startMs
+    const live = liveState(items, planned, [day], day);
+    expect(driftLabel(live.driftMs)).toBe("on time");
+  });
+});
+
 describe("nextFiveMark", () => {
   it("rounds up to the next 5-minute mark", () => {
     expect(nextFiveMark(new Date(2026, 5, 12, 9, 1, 10).getTime())).toBe("09:05");

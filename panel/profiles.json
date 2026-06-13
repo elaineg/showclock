@@ -1,0 +1,77 @@
+{
+  "source": "lib/personas/roster.json (2026-06-12 ICP roster)",
+  "app": "showclock — paste-and-go run-of-show timer with live drift + reflow + share URL",
+  "note": "All 10 personas copied verbatim from the canonical roster; one app-specific 'motivation' added each, phrased from the persona's real recurring workflow.",
+  "personas": [
+    {
+      "id": 1, "name": "Priya", "role": "Senior backend software engineer",
+      "tech": "high", "device": "desktop, large monitor, keyboard-first",
+      "stack": "terminal + neovim, GitHub, Kubernetes dashboards, Datadog, Linear, Slack",
+      "temperament": "skeptical of new tools; hates signups; will inspect network tab if suspicious; abandons anything slower than a CLI",
+      "motivation": "Runs the team's monthly internal demo day — 8 lightning talks back-to-back. Needs a no-signup timer that keeps the slot times honest and that she can confirm is fully client-side (will check the network tab) before trusting it on the projector."
+    },
+    {
+      "id": 2, "name": "Marcus", "role": "Frontend engineer, 2 years in",
+      "tech": "high", "device": "desktop, Chrome with devtools open",
+      "stack": "VS Code, GitHub, Vercel, Figma dev mode, Storybook, Discord/Slack",
+      "temperament": "enthusiastic early adopter; shares tools in team Slack when impressed; notices janky CSS instantly",
+      "motivation": "MCs the bi-weekly sprint demo and the annual hackathon showcase. Wants to paste the agenda once, drop the presenter link in the team Slack so a co-host has it, and have the big-type countdown look clean on a shared screen."
+    },
+    {
+      "id": 3, "name": "Wen", "role": "Marketing data analyst",
+      "tech": "high-medium", "device": "desktop, two monitors",
+      "stack": "BigQuery/SQL, Google Sheets, Looker Studio, dbt, GA4, Slack",
+      "temperament": "lives in data hygiene; distrusts tools that transform data invisibly; wants CSV in/out everywhere",
+      "motivation": "Leads a weekly 6-segment data-literacy training for the marketing org. Wants the parsed rundown to match exactly what she pasted (no silent reinterpretation of her durations) and the drift math to be transparent."
+    },
+    {
+      "id": 4, "name": "Tomás", "role": "Operations analyst at a mid-size company",
+      "tech": "medium", "device": "corporate Windows laptop, Edge",
+      "stack": "Excel (power user), Tableau, Jira, Teams, SharePoint",
+      "temperament": "pragmatic; IT blocks installs so browser tools appeal; wary of pasting company data into random sites",
+      "motivation": "Facilitates the recurring weekly ops review with a strict 45-minute agenda. IT blocks desktop installs, so a browser tool that needs no login and keeps no data on a server is exactly his lane."
+    },
+    {
+      "id": 5, "name": "Dana", "role": "Demand-gen marketer",
+      "tech": "medium", "device": "MacBook in cafes; phone between meetings",
+      "stack": "HubSpot, GA4, Notion, Canva, LinkedIn Campaign Manager, Google Ads",
+      "temperament": "ruthless about time; if value isn't obvious in one scroll she's gone; screenshots tools she likes for the team channel",
+      "motivation": "Hosts monthly product webinars with a tight segment schedule (intro, demo, guest, Q&A). Needs to glance at a phone or second screen and instantly know if she's running behind so she can trim Q&A."
+    },
+    {
+      "id": 6, "name": "Jules", "role": "Content & community marketer",
+      "tech": "medium", "device": "50/50 desktop and mobile",
+      "stack": "Notion, Buffer, Mailchimp, Figma (consuming), X/LinkedIn/Mastodon, Discord",
+      "temperament": "posts constantly, juggles platform quirks daily; allergic to anything requiring a login for a small job",
+      "motivation": "Runs a weekly community AMA / live stream with a loose run of show. Wants a zero-login timer she can open on her phone podium and a read-only link to hand a co-host."
+    },
+    {
+      "id": 7, "name": "Aisha", "role": "Product designer",
+      "tech": "medium-high", "device": "desktop, big display, trackpad",
+      "stack": "Figma, FigJam, Notion, Loom, Maze, Slack",
+      "temperament": "judges craft hard — spacing, copy tone, empty states; a clumsy UI loses her regardless of utility; advocates loudly for tools that feel considered",
+      "motivation": "Facilitates timeboxed design workshops in FigJam (5-min warmup, 15-min sketch, 10-min critique). Lives or dies on timeboxes and judges whether the presenter view is calm and legible enough to glance at while running the room."
+    },
+    {
+      "id": 8, "name": "Rob", "role": "Brand/visual designer, freelance",
+      "tech": "medium", "device": "desktop, color-calibrated monitor",
+      "stack": "Figma, Illustrator, Photoshop, Google Drive, client Slacks/emails",
+      "temperament": "does repetitive asset-prep grunt work weekly; price-sensitive; compares everything to 'I could do this in Photoshop in 4 minutes'",
+      "motivation": "Runs paced client presentation walkthroughs and the occasional portfolio-review panel. Price-sensitive — will weigh this against just glancing at his phone clock, so the drift/reflow has to clearly earn its place."
+    },
+    {
+      "id": 9, "name": "Elena", "role": "Engineering manager (8 reports)",
+      "tech": "medium-high but no time", "device": "laptop + phone, half the day in meetings",
+      "stack": "Google Calendar (wall-to-wall), Slack, Linear, Google Docs, Zoom, dashboards she skims",
+      "temperament": "30-second patience budget; uses tools between meetings on her phone; anything requiring setup is dead to her; recommends tools that save her reports time",
+      "motivation": "Runs the weekly team all-hands and a monthly retro, both with rigid agendas she always overruns. Has a 30-second patience budget — if pasting the agenda and starting isn't near-instant she's back to the calendar clock."
+    },
+    {
+      "id": 10, "name": "Sam", "role": "Product manager",
+      "tech": "medium", "device": "mobile-heavy between meetings, laptop otherwise",
+      "stack": "Notion, Sheets, Slack, Zoom, Asana, Amplitude (skims), endless browser tabs",
+      "temperament": "synthesizes and shares constantly — exports, links, screenshots; values anything that makes him look organized; mild tech confidence, won't debug anything",
+      "motivation": "Facilitates sprint planning and quarterly roadmap workshops. Wants to look organized — paste the agenda, share the link, and have remaining segments visibly reflow when one runs long so the room trusts the schedule."
+    }
+  ]
+}

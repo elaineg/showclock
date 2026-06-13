@@ -6,30 +6,86 @@ export type ParsedLine =
 
 export type Item = { name: string; minutes: number };
 
-// "Intro 10", "Intro - 10 min", "Intro (10 min)", "Demo: 20"
-const TRAILING =
-  /^(.+?)[\s\-–—:·]*\(?\s*(\d{1,3})\s*(?:m|min|mins|minute|minutes)?\s*\)?\s*\.?$/i;
-// "10 Intro", "10 min Intro", "10 - Intro"
-const LEADING =
-  /^(\d{1,3})\s*(?:m|min|mins|minute|minutes)?\b[\s\-–—:·]*(.+)$/i;
+// ---- unit helpers ----
+
+// Map a unit string (already lower-cased, trimmed) to minutes-per-unit, or null if unknown.
+function unitToMinutes(unit: string): number | null {
+  if (!unit || /^m(in(s|ute|utes)?)?$/.test(unit)) return 1;           // min / mins / minute / minutes / m / (no unit)
+  if (/^s(ec(s|ond|onds)?)?$/.test(unit)) return 1 / 60;               // s / sec / secs / second / seconds
+  if (/^h(r(s)?|our(s)?)?$/.test(unit)) return 60;                     // h / hr / hrs / hour / hours
+  return null; // unrecognized unit
+}
+
+// Returns minutes (may be fractional) or null if unit is unrecognized.
+function parseQuantity(num: string, unit: string): number | null {
+  const n = parseFloat(num);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const factor = unitToMinutes(unit.toLowerCase().trim());
+  if (factor === null) return null;
+  return n * factor;
+}
+
+// Regex patterns — number (int or decimal) followed by optional unit, surrounded by separators.
+// Group 1: leading number, Group 2: leading unit (may be empty), Group 3: rest name
+const LEADING_RE =
+  /^(\d+(?:\.\d+)?)\s*(s(?:ec(?:s|ond|onds)?)?|h(?:r(?:s)?|our(?:s)?)?|m(?:in(?:s|ute|utes)?)?)?\b[\s\-–—:·]*(.+)$/i;
+
+// Group 1: name text, Group 2: trailing number, Group 3: trailing unit (may be empty)
+const TRAILING_RE =
+  /^(.+?)[\s\-–—:·]*\(?\s*(\d+(?:\.\d+)?)\s*(s(?:ec(?:s|ond|onds)?)?|h(?:r(?:s)?|our(?:s)?)?|m(?:in(?:s|ute|utes)?)?)?\s*\)?\s*\.?$/i;
+
+// If a line has an explicit unrecognized unit we must flag it, not silently reinterpret.
+// Match: number + unrecognized-word-unit pattern at start or end.
+const EXPLICIT_UNIT_RE = /\b\d+(?:\.\d+)?\s*([a-z]{1,10})\b/gi;
+
+function hasUnrecognizedExplicitUnit(line: string): boolean {
+  EXPLICIT_UNIT_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = EXPLICIT_UNIT_RE.exec(line)) !== null) {
+    const unit = m[1].toLowerCase();
+    // skip recognized units and common false-positives (words that are part of a name)
+    if (unitToMinutes(unit) !== null) continue;
+    // If the word immediately follows a number it's likely intended as a unit
+    return true;
+  }
+  return false;
+}
 
 export function parseLine(raw: string): ParsedLine | null {
   const line = raw.trim();
   if (!line) return null;
-  let m = line.match(TRAILING);
+
+  // Try TRAILING pattern first: "Intro 10", "Demo - 20 min", "90 second teaser", "Q&A 1h"
+  let m = line.match(TRAILING_RE);
   if (m) {
-    const name = m[1].trim();
-    const minutes = parseInt(m[2], 10);
-    if (name && !/^\d+$/.test(name) && minutes > 0) {
-      return { kind: "item", name, minutes, raw };
+    const namePart = m[1].trim();
+    const numStr = m[2];
+    const unitStr = (m[3] ?? "").toLowerCase().trim();
+    if (namePart && !/^\d+$/.test(namePart)) {
+      const minutes = parseQuantity(numStr, unitStr);
+      if (minutes !== null && minutes > 0) {
+        // round fractional minutes to nearest whole minute (e.g. 90s = 1.5 → 2, but ≤1 stays 1)
+        const mins = Math.max(1, Math.round(minutes));
+        return { kind: "item", name: namePart, minutes: mins, raw };
+      }
     }
   }
-  m = line.match(LEADING);
+
+  // Try LEADING pattern: "10 Intro", "10 min Intro", "1h Keynote"
+  m = line.match(LEADING_RE);
   if (m) {
-    const minutes = parseInt(m[1], 10);
-    const name = m[2].trim();
-    if (name && minutes > 0) return { kind: "item", name, minutes, raw };
+    const numStr = m[1];
+    const unitStr = (m[2] ?? "").toLowerCase().trim();
+    const namePart = m[3].trim();
+    if (namePart) {
+      const minutes = parseQuantity(numStr, unitStr);
+      if (minutes !== null && minutes > 0) {
+        const mins = Math.max(1, Math.round(minutes));
+        return { kind: "item", name: namePart, minutes: mins, raw };
+      }
+    }
   }
+
   return { kind: "error", raw };
 }
 

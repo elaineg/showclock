@@ -17,6 +17,19 @@ Demo - 20 min
 15 Q&A
 Wrap-up 5`;
 
+/** Build a demo session that is currently ~6 min BEHIND so the payoff is obvious. */
+function buildDemoSession(now: number): Session {
+  const text = `Welcome 5\nMain talk - 20 min\nBreakout Q&A 15\nClosing remarks 5`;
+  // Session "started" 12 min ago
+  const sessionStart = now - 12 * 60_000;
+  // HH:MM for that start time
+  const d = new Date(sessionStart);
+  const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  // Welcome ran 7 min (2 min over its 5-min slot) → started main talk late
+  const mainTalkActualStart = sessionStart + 7 * 60_000;
+  return { t: text, s: hhmm, a: [sessionStart, mainTalkActualStart] };
+}
+
 export default function Planner({ session, now }: { session: Session | null; now: number }) {
   const text = session?.t ?? "";
   const start = session?.s || (now ? nextFiveMark(now) : "");
@@ -25,6 +38,7 @@ export default function Planner({ session, now }: { session: Session | null; now
   const startMs = start && now ? startMsFromHHMM(start, now) : null;
   const planned = startMs !== null ? plannedStarts(items, startMs) : [];
   const totalMin = items.reduce((s, it) => s + it.minutes, 0);
+  const hasRundown = lines.length > 0;
 
   const update = (t: string, s: string) => setSession(t || s ? { t, s, a: [] } : null);
 
@@ -35,8 +49,19 @@ export default function Planner({ session, now }: { session: Session | null; now
     setSession({ t: text, s: start, a: [Date.now()], id }, true);
   };
 
-  // map each parsed line to its item index (errors -> -1), computed up front
-  // because lint forbids mutating render-scope variables inside the map below
+  // G5: load a live-behind demo session directly into presenter view
+  const onLiveDemo = () => {
+    if (!now) return;
+    const demo = buildDemoSession(now);
+    const id = Math.random().toString(36).slice(2, 10);
+    claimOwnership(id);
+    setSession({ ...demo, id }, true);
+  };
+
+  // G1: copy link confirmation for the "copy link" on planner
+  // (planner doesn't have a share button yet — this is here in case we add one)
+
+  // map each parsed line to its item index (errors -> -1)
   const lineItemIdx: number[] = [];
   {
     let n = 0;
@@ -48,8 +73,10 @@ export default function Planner({ session, now }: { session: Session | null; now
       <header className="py-4">
         <h1 className="text-3xl font-extrabold tracking-tight">Showclock</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Paste your run-of-show, hit Start, and always know if you&apos;re ahead or behind.
-          No accounts — the whole session lives in the URL.
+          Know exactly how far behind you are — and what time everything starts now.
+        </p>
+        <p className="mt-0.5 text-xs text-gray-400">
+          Paste your agenda. We track the drift and reflow every clock time live.
         </p>
       </header>
 
@@ -88,7 +115,7 @@ export default function Planner({ session, now }: { session: Session | null; now
         )}
       </div>
 
-      {lines.length > 0 && (
+      {hasRundown && (
         <section className="mt-6" aria-label="Parsed rundown">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
             Rundown · {items.length} item{items.length === 1 ? "" : "s"} · {totalMin} min total
@@ -99,8 +126,11 @@ export default function Planner({ session, now }: { session: Session | null; now
                 return (
                   <li key={i} className="flex items-center justify-between gap-3 px-3 py-2">
                     <span className="truncate text-gray-400 line-through">{line.raw.trim()}</span>
-                    <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-950 dark:text-rose-300">
-                      couldn&apos;t parse
+                    <span
+                      role="alert"
+                      className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                    >
+                      couldn&apos;t parse — try &ldquo;10&rdquo; or &ldquo;10 min&rdquo;
                     </span>
                   </li>
                 );
@@ -119,6 +149,10 @@ export default function Planner({ session, now }: { session: Session | null; now
               );
             })}
           </ul>
+          {/* G8: bookmark hint once agenda parses */}
+          <p className="mt-2 text-xs text-gray-400">
+            Bookmark this page to reuse this agenda — it&apos;s saved in the link.
+          </p>
         </section>
       )}
 
@@ -130,8 +164,22 @@ export default function Planner({ session, now }: { session: Session | null; now
       >
         Start show
       </button>
+
+      {/* G5: one-tap live demo */}
+      <button
+        type="button"
+        onClick={onLiveDemo}
+        disabled={!now}
+        className="mt-3 w-full rounded-2xl border-2 border-sky-500 py-3 text-lg font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-40 dark:hover:bg-sky-950"
+      >
+        See a live example
+      </button>
+      <p className="mt-1 text-center text-xs text-gray-400">
+        Loads a sample session already running behind — no setup needed.
+      </p>
+
       <p className="mt-3 text-center text-xs text-gray-500">
-        After Start, copy the URL to give a co-facilitator a read-only view.
+        After Start, copy the URL to give a co-facilitator a snapshot view.
       </p>
     </main>
   );
