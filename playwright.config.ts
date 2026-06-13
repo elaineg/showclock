@@ -8,7 +8,7 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"]],
   use: {
-    baseURL: process.env.BASE_URL || "https://showclock-an8xhjgy4-elainegao.vercel.app",
+    baseURL: process.env.BASE_URL || "https://showclock-awtvc75a5-elainegao.vercel.app",
     timezoneId: "UTC",
     locale: "en-US",
   },
