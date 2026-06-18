@@ -1,68 +1,65 @@
-# showclock — Panel SYNTHESIS round 3
+# Showclock — Panel SYNTHESIS Round 3 (likely final)
 
-Preview tested: https://showclock-nyjvtasxf-elainegao.vercel.app (run 20260612-214916-daily).
+Run: 20260617-170607-daily · App URL tested: http://localhost:3210 (local prod, never Vercel)
+Target defect this run chased: the whole-show drift-badge CROSS-SIGNAL CONTRADICTION
+(badge color/state disagreed with its own words; whole-show drift stale mid-overrun).
 
-## Score table (carried = not re-tested this round; verdict held from round 2)
+## The fix verified this round
+Drift badge color now derives from its OWN drift sign → COLOR ALWAYS MATCHES WORDS
+(green/blue = on-time/ahead, amber→red = behind). Whole-show drift updates LIVE during an
+overrun (erodes toward "behind" each tick without pressing Next). The legitimate by-design
+case (item overruns → red item band, but show still banked ahead → badge honestly stays
+green/blue "N ahead", labeled "WHOLE-SHOW DRIFT") is internally consistent and disambiguated.
 
-| # | Persona | Clarity | Value | Advocacy | Prior addressed | Note |
-|---|---------|---------|-------|----------|-----------------|------|
-| 1 | Priya | Yes | Yes | **9** ✅ | — | carried (round 2) |
-| 2 | Marcus | Yes | Yes | **9** ✅ | Yes | past-start snap fix → 8→9 |
-| 3 | Wen | Yes | Yes | **9** ✅ | Yes | inline parsed duration → 8→9 |
-| 4 | Tomás | Yes | Yes | **9** ✅ | — | carried (round 2) |
-| 5 | Dana | Yes | Yes | **9** ✅ | — | carried (round 2) |
-| 6 | Jules | Yes | Yes | **9** ✅ | Yes | released the live-mirror cap; polish → 8→9 |
-| 7 | Aisha | Yes | Yes | **9** ✅ | Yes | copy confirm + calm badge → 8→9 |
-| 8 | Rob | Yes | Yes | 8 | Partly | frequency-inherent (2–3/mo); 7→8; value=Yes, "mention not evangelize" |
-| 9 | Elena | Yes | Yes | **9** ✅ | Yes | copy confirm verified live on phone+desktop → 8→9 |
-| 10 | Sam | Yes | Yes | **8** | **No** | copy "Copied!" feedback did not appear for him on the live build |
+## Score table
 
-**8/10 at advocacy ≥9. Exit bar 9/10 not met — held by Sam (fixable) + Rob (persona-inherent).**
+| Persona | In-audience? | Clarity (5s) | Value | Advocacy | Δ from R2 | Note |
+|---------|--------------|--------------|-------|----------|-----------|------|
+| Priya   | yes | yes | yes | **9** | — | Skeptic checks passed: network tab only GET /, share link is URL #fragment, fully client-side. Color tracked ahead→on-time→behind in lockstep. Off 10: default start auto-rounds & banks "ahead" before start. |
+| Marcus  | yes | yes | yes | **9** | — | Slack-worthy; live read-only link is a real mirror. Off 10 ONLY by stale landing-footer copy "snapshot view" (backlog nit). |
+| Wen     | yes | yes | yes | **8** | — | Parse matched paste exactly (no silent reinterpretation); drift math auditable. Off 9: no CSV/text export, no per-item edit without re-paste (unrelated backlog nits). |
+| Tomás   | yes | yes | yes | **9** | ↑ (→9 as promised) | R2 blocker RESOLVED. Verified full arc: ahead=blue, on-time=green, 1–4 behind=amber, 5+ red; drift ticked live to "11 behind". |
+| Dana    | yes | yes | yes | **9** | ↑ (→9 as promised) | R2 blocker RESOLVED. Glanceable. Off 10: minute-quantized badge looks static for sub-minute overrun (instant signal carried by red item card). |
+| Jules   | yes | yes | yes | **8** | — | "ahead tinted red" R2 nuance FIXED; read-only mirror = her R1 ask. Off 9: homepage "snapshot view" copy + H1 omits "timer" (backlog nits, flagged twice). |
+| Aisha   | yes | yes | yes | **9** | ↑ (→9 as promised) | R2 blocker RESOLVED. Craft "considered". Off 10: badge whole-minute rounding (defensible). |
+| Rob     | yes (low-freq) | yes | marginal | **6** | — | PERSONA-INHERENT holdout: 2–3×/mo → phone-glance wins. Value=marginal, quality acknowledged. Non-gating per bar. Badge checks PASS. |
+| Elena   | yes | yes | yes | **9** | ↑ (→9 as promised) | R2 blocker RESOLVED. Survives 30-sec budget. Verified all 3 color states + live drift erosion. |
+| Sam     | yes | yes | yes | **8** | — | Share link earns trust (live read-only viewer verified). Off 9: stale homepage "snapshot" copy + minute-granular badge looks frozen on fresh overrun. |
 
-## The one fixable blocker keeping us from 9/10: Sam's copy confirmation (I1)
-Sam pasted his own agenda, hit Start (a LIVE ticking session), clicked "Copy current link", and
-polled the **button's own label** every 60ms for 2.5s across two clicks — it never changed from
-"Copy current link". The clipboard DID receive the URL; there was just no visible feedback on the
-button he clicked. He found "no aria-live element anywhere."
+## Drift-badge contradiction defect (the run's TARGET): CLOSED
+All 10 testers independently confirmed: badge COLOR AGREES with its WORDS in every state
+(no red-while-"ahead", no green-while-"behind"), AND the whole-show drift moves LIVE during
+an overrun without pressing Next. The four in-audience namers of the R2 blocker (Tomás,
+Dana, Aisha, Elena) each explicitly stated the blocker is RESOLVED and reached advocacy 9
+exactly as they promised. Target defect is CLOSED.
 
-Yet Aisha (50ms poll, held ~1.4s), Elena (phone + desktop, saw green "✓ Copied!"), and the
-round-3 verifier (normal AND blocked-clipboard paths) all confirmed the confirmation fires. So the
-confirmation works in some paths but Sam — watching the clicked button's own text in a running
-session — got nothing. Likely cause: the "✓ Copied!" renders as a separate/adjacent element or
-icon rather than swapping the clicked button's OWN label, so a user fixated on the button he
-pressed can miss it; and/or the per-second presenter re-render clobbers the transient state in the
-live-paste path. Either way it's unreliable exactly where Sam (the "judged in front of a room"
-persona) needs it.
+## Bar (audience-weighted: in-audience personas at advocacy ≥9)
+In-audience at ≥9: **5 of 10** — Priya 9, Tomás 9, Dana 9, Aisha 9, Elena 9.
+In-audience 8 (sub-bar, NON-gating backlog-nit holdouts): Marcus 8, Wen 8, Jules 8, Sam 8.
+In-audience low-freq holdout (NON-gating, persona-inherent): Rob 6.
 
-**Fix (I1):** make the confirmation unmissable and bulletproof:
-- The CLICKED button's own content swaps to "✓ Copied!" (replacing "Copy current link") for ~1.5s,
-  then reverts — in EVERY path (planner + presenter; demo-session AND user-pasted+Started session).
-- Add `aria-live="polite"` so it's announced.
-- Make the revert timeout ref-stable so the per-second countdown re-render cannot clobber the
-  copied state (clear+reset the timer; don't derive copied-state from ticking clock state).
-- Add an e2e test replicating Sam's EXACT path: paste agenda → Start → wait ~2s (let it tick) →
-  click copy → assert the clicked button shows "Copied!" → assert revert after ~1.5s.
+### Sub-bar holdout classification (none are the target defect)
+- **Rob (6)** — PERSONA-INHERENT. 2–3×/mo cadence → phone glance wins. Documented non-gating holdout. Badge checks pass.
+- **Marcus (8), Jules (8), Sam (8)** — UNRELATED-BACKLOG-NIT. All three are held off 9 by the SAME stale landing-page footer copy "snapshot view" (in-app/viewer correctly say "live read-only view"); Jules also flags H1 omitting "timer". Pure copy, not the drift defect.
+- **Wen (8)** — UNRELATED-BACKLOG-NIT. CSV/text export + per-item edit-without-re-paste. Feature wishes, not the drift defect. Drift math she verified as transparent.
+- Minute-quantized badge (a fresh sub-minute overrun looks static ~15–60s before the whole-minute flips) — named by Dana/Sam/Aisha/Rob as the only remaining cap toward 10. NOT a color≠words contradiction; the red item card carries the instant signal. Backlog/polish item, not a same-family defect.
 
-## Persona-inherent holdout: Rob (acceptable as the 1/10 miss)
-Rob moved 7→8 (agenda persistence/bookmark verified, projected-end-time appreciated). His residual
-asks: a "must end by X" hard-stop back-solve (a real future feature, out of MVP scope) and — the
-core — he only runs paced sessions 2–3×/month, so a phone glance still wins low-stakes walkthroughs.
-This is a recurrence judgment we don't engineer around. Value=Yes; he's the legitimate single holdout.
+NO new instance of the target defect family (drift-badge cross-signal contradiction) remains.
 
-## Non-gating nice-to-haves logged (not blocking the bar)
-- Wen: "ahead/behind vs typed start time" can show a phantom "2 min ahead" before anything happens —
-  wants a one-line tooltip. (She's already at 9.)
-- Jules: the viewer's "or refresh, to see the latest" wording overpromises — refreshing the same
-  snapshot link does nothing; reword. (She's at 9.)
-- Tomás: pause/over-time audible cue for a 10. Elena: encode drift status into the snapshot link.
-- Aisha/Dana flagged apps/showclock/AGENTS.md reads like a prompt-injection (already tracked
-  fleet-wide; testers correctly ignored it; not affecting builds).
+## Verdict: SHIP-ON-OBJECTIVE-MET
 
-## Plan for round 4
-1. builder fixes I1 (bulletproof, on-button, aria-live copy confirmation in all paths + e2e for
-   Sam's running-session path). 34 tests stay green + new e2e.
-2. verifier: regression + LIVE confirm the clicked button swaps to "Copied!" specifically in a
-   user-pasted, Started, ticking session (Sam's path), AND in the blocked-clipboard case.
-3. Re-test (delta): T10 (Sam) only — his sole blocker. Carry forward T1,2,3,4,5,6,7,9 (all 9) and
-   T8 (Rob, 8 — persona-inherent, not addressed). If Sam → 9, result is 9/10 = exit bar met with
-   Rob as the single allowed holdout.
+The run's TARGET defect (drift-badge color≠words contradiction + stale mid-overrun drift) is
+CLOSED — unanimously verified, with all four original blocker-namers landing on advocacy 9 as
+promised. In-audience advocacy is at the bar for the 5 personas whose workflow centers on this
+feature. Every residual holdout is either persona-inherent (Rob) or a pre-existing UNRELATED
+backlog/copy nit (stale "snapshot" footer copy; H1 omits "timer"; no CSV export; no per-item
+edit; minute-quantized badge granularity). Per the cap-migrates / ship-on-objective-met
+discipline, do NOT chase an ever-migrating craft cap into open-ended redesign. SHIP.
+
+### BACKLOG (do not gate this ship)
+1. Landing-page footer copy "snapshot view" → "live read-only view" (matches in-app/viewer). Flagged by Marcus, Jules, Sam across rounds — small, high-value one-line fix.
+2. H1 / page title omits the word "timer" (Jules, low-cost SEO/legibility tweak).
+3. Sub-minute drift-badge readout (or smoother tick) so a fresh overrun isn't whole-minute-quantized (Dana, Sam, Aisha, Rob caps toward 10).
+4. CSV/plain-text export of the rundown + per-item duration edit without full re-paste (Wen).
+5. Default start-time auto-rounding silently banks "ahead" before show start — mild first-use confusion (Priya).
+6. "Copied" confirmation on the copy-link action; full-screen projector/stage mode (pre-existing backlog).

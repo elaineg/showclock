@@ -24,3 +24,20 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Stage-cue RED band pulse — gentle breathe, ~1.2s, well under 3 flashes/sec (WCAG-safe). */
+@keyframes cue-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.72; }
+}
+
+.cue-band-pulse {
+  animation: cue-pulse 1.2s ease-in-out infinite;
+}
+
+/* Respect reduced-motion: drop the pulse, keep the solid red color. */
+@media (prefers-reduced-motion: reduce) {
+  .cue-band-pulse {
+    animation: none;
+  }
+}

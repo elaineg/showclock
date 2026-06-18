@@ -14,6 +14,9 @@ import type { Session } from "@/lib/codec";
 import { encodeHash } from "@/lib/codec";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { setSession, useNow } from "@/lib/store";
+import { getCueState } from "@/lib/cueState";
+import { useSound } from "@/lib/useSound";
+import CueBand from "./CueBand";
 import DriftBadge from "./DriftBadge";
 
 export default function Presenter({
@@ -35,6 +38,20 @@ export default function Presenter({
   const live = liveState(items, planned, session.a, now || session.a[session.a.length - 1]);
   const cur = items[live.current];
   const overtime = !live.ended && live.countdownMs < 0;
+
+  // Stage cue state — single pure function of timing data.
+  const cueState = getCueState(live.countdownMs, cur?.minutes ?? 1, live.ended);
+
+  // Sound — WebAudio beep on RED transition and 30s overrun reminder.
+  const { soundOn, soundBlocked, toggleSound, notifyCueState } = useSound();
+
+  // Unique key for current item (resets beep counters on Next/Back).
+  const itemKey = `${live.current}-${session.a[0] ?? 0}`;
+
+  // Notify sound hook every tick.
+  useEffect(() => {
+    notifyCueState({ cueState, countdownMs: live.countdownMs, itemKey });
+  }, [cueState, live.countdownMs, itemKey, notifyCueState]);
 
   // G4: session is "started" only once there is at least 1 actual timestamp.
   // session.a[0] = Start was pressed. But before Start this component isn't rendered
@@ -102,19 +119,44 @@ export default function Presenter({
           role="status"
           className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-center text-xs text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200"
         >
-          You&apos;re viewing a snapshot — ask the host to re-share, or refresh, to see the latest.
+          You&apos;re viewing a live read-only view — it reflows projected times from the link. Ask the host for a new link to pick up any agenda edits.
         </p>
       )}
 
-      {/* G2: Drift badge is the topmost, largest element in presenter view */}
-      <section className="text-center">
-        {/* G4: neutral until clock is live (now=0 = SSR/pre-hydration) */}
-        <div className="mb-4">
-          <DriftBadge driftMs={live.driftMs} big neutral={now === 0} />
+      {/* G2: Drift badge is the topmost, largest element in presenter view.
+          C4: Sound toggle pill — always visible in presenter top bar (labeled, not in a menu). */}
+      <section className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          {/* G4: neutral until clock is live (now=0 = SSR/pre-hydration) */}
+          <DriftBadge
+            driftMs={live.driftMs}
+            big
+            neutral={now === 0}
+          />
         </div>
 
+        {/* C4 sound toggle — visible on cold load, labeled pill, min 44px tap target */}
+        <button
+          type="button"
+          onClick={toggleSound}
+          aria-label={soundOn ? "Sound: On. Click to turn off." : "Sound: Off. Click to turn on."}
+          aria-pressed={soundOn}
+          className="mt-1 flex min-h-[44px] min-w-[110px] shrink-0 items-center justify-center rounded-full border-2 border-gray-300 px-3 py-1 text-sm font-semibold dark:border-gray-600"
+        >
+          {soundOn ? "🔔 Sound: On" : "🔔 Sound: Off"}
+        </button>
+      </section>
+
+      {/* Sound blocked hint */}
+      {soundBlocked && (
+        <p role="alert" className="mt-1 text-right text-xs text-amber-600">
+          Sound blocked by browser
+        </p>
+      )}
+
+      <div className="mt-4">
         {live.ended ? (
-          <>
+          <div className="rounded-xl bg-gray-100 px-4 py-5 text-center dark:bg-gray-800" data-cue-state="neutral">
             <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">
               Show complete
             </p>
@@ -123,10 +165,11 @@ export default function Presenter({
               Finished at {fmtClock(session.a[items.length])} · planned{" "}
               {fmtClock(planned[items.length - 1] + items[items.length - 1].minutes * 60_000)}
             </p>
-          </>
+          </div>
         ) : (
-          <>
-            <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+          /* C2: full-width color band wraps the whole current-item block */
+          <CueBand cueState={cueState}>
+            <p className="text-sm font-semibold uppercase tracking-wide opacity-80">
               Now · item {live.current + 1} of {items.length}
             </p>
             <h2 className="mt-1 break-words text-4xl font-extrabold leading-tight">
@@ -135,19 +178,17 @@ export default function Presenter({
             {/* G2: countdown is secondary — smaller, below the drift badge */}
             <div
               data-testid="countdown"
-              className={`mt-2 font-mono text-4xl font-bold tabular-nums ${
-                overtime ? "text-rose-600" : ""
-              }`}
+              className="mt-2 font-mono text-4xl font-bold tabular-nums"
             >
               {now ? fmtCountdown(live.countdownMs) : "–:––"}
             </div>
-            <p className="text-sm text-gray-500">
+            <p className="mt-1 text-sm opacity-80">
               {overtime ? "over the planned " : "of "}
               {cur.minutes} min{overtime ? "" : " planned"}
             </p>
-          </>
+          </CueBand>
         )}
-      </section>
+      </div>
 
       {!readOnly && (
         <section className="mt-6 flex gap-3">
@@ -255,8 +296,8 @@ export default function Presenter({
           >
             {copyState === "copied" ? "✓ Copied!" : "Copy current link"}
           </button>
-          {/* G7: snapshot framing */}
-          <span className="text-xs text-gray-400">Shares a snapshot of right now.</span>
+          {/* G7: live read-only view framing */}
+          <span className="text-xs text-gray-400">Shares a live read-only view.</span>
           <button type="button" onClick={exit} className="text-sm text-gray-500 underline">
             End &amp; edit agenda
           </button>
