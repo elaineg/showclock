@@ -1,84 +1,112 @@
-# Showclock — Panel SYNTHESIS round1 (STAGE CUES feature)
+# Showclock — Panel SYNTHESIS Round 1 (new feature: edit-the-rundown-in-place)
 
-Run: 20260617-170607-daily. Feature judged: STAGE CUES on the running presenter view
-(traffic-light color band GREEN→AMBER→RED with calm RED pulse; opt-in 🔔 Sound toggle,
-default Off; over-time flash). Tested COLD against http://localhost:3210 by 10 personas.
+Feature under test: inline-edit each rundown item's title/duration, add/delete/reorder rows
+with per-row ↑/↓/× controls, "Copy rundown as text" export, all reflowing planned clock
+times live; edits round-trip into Start/share-URL/presenter.
 
-## Score table
+## Per-tester verdicts
 
-| Persona | In-audience? | Clarity (5s) | Value | Advocacy | One-line note |
-|---------|:---:|:---:|:---:|:---:|---|
-| Priya (backend eng, monthly 8-talk demo day) | YES | Yes | Yes | 8 | Verified client-side in network tab; cues + calm pulse great; wants full-screen projector-only stage mode |
-| Marcus (frontend eng, biweekly sprint demo MC) | YES | Yes | Yes | 8 | Cues all clean; co-host share link is a snapshot that goes stale on Next — wants live mirror |
-| Wen (data analyst, weekly 6-seg training) | YES | Yes | Yes | 8 | Parse fidelity exact; cues work; copy-link gives no "Copied" confirmation; wants CSV export |
-| Tomás (ops analyst, weekly strict 45-min review) | YES | Yes | Yes | 8 | No-signup verified; beeps fired; BLOCKER: green "on time" header vs red item band contradiction |
-| Dana (demand-gen, monthly webinar, glance-to-know-behind) | YES | Yes | Yes | 8 | Glanceable behind-signal nailed; BLOCKER: item card RED while top pill GREEN = double-take |
-| Jules (community marketer, weekly AMA, phone podium) | YES | Partially | Yes | 7 | Cues + calm pulse podium-safe; share link snapshot-not-live; H1 omits the word "timer" |
-| Aisha (product designer, timeboxed FigJam workshops) | YES | Yes | Marginal | 6 | Cue band considered, pulse calm; BLOCKER: chip/band contradiction; clock-time framing not durations |
-| Elena (eng manager, weekly all-hands, always overruns) | YES | Yes | Yes | 7 | TTFV ~2s; RED is the stop-kick she lacks; BLOCKER: green pill vs red band contradiction |
-| Sam (PM, sprint planning, sharer) | YES | Yes | Yes | 8 | Share link live + reflows; cues work; "snapshot" copy misdescribes the (actually live) feature |
-| Rob (freelance designer, 2–3×/month walkthroughs) | NO (low-freq holdout) | Yes | Yes (in principle) | 6 | Built well, cues verified; phone glance still wins at his frequency — KNOWN non-gating holdout |
+| Tester | Audience | Score | One-line blocker |
+|--------|----------|-------|------------------|
+| Priya (backend eng, demo day) | IN | 8 | No live in-place editing DURING a running show — must "End & edit" + restart to nudge a slot |
+| Marcus (frontend eng, sprint demo MC) | IN | 8 | Share URL is a long ugly ~190-char base64 hash — looks sketchy pasted in Slack |
+| Wen (data analyst, weekly training) | IN | 7 | **Start show IGNORES the Start-time field** — plans off set time, runs off wall-clock with no warning; + duration cell no select-all-on-focus → "3020m" |
+| Tomás (ops analyst, weekly ops review) | IN | 8 | Client-side/no-server data-safety story is true but invisible — never stated up front |
+| Dana (demand-gen, monthly webinars) | IN | 8 | **Start-time field silently ignored** (reflows off wall-clock); + duration no select-all → "3020" on tap |
+| Jules (community marketer, weekly AMA) | IN | 9 | Co-host read-only link is a static hash snapshot — goes stale when agenda edited mid-show |
+| Aisha (product designer, FigJam workshops) | IN | 8 | **Duration edit does NOT select-all on focus** → click "5m" + type "8" = "85m"; fumbles the core action |
+| Rob (brand designer, client walkthroughs) | IN | 7 | **Duration edit no select-all** → "2520" = 42-hour item, silently blows up projected times, no max guard |
+| Elena (eng manager, weekly all-hands) | IN | 8 | **Duration edit no select-all** → click "15m" + type "20" = "1520m" garbage total; the edit she'd make most weekly is a trap |
+| Sam (PM, sprint/roadmap workshops) | IN | 6 | **"Copy rundown as text" export NOT FOUND** — only a share link; + structured inline editor not seen (edited via textarea) |
 
-## In-audience advocacy vs bar
+## In-audience-at-9 count: 1/10 in-audience at advocacy ≥9 (Jules only). NEEDS-FIX.
 
-Bar (audience-weighted niche DEEPEN): IN-AUDIENCE personas advocating at **≥9**.
-- In-audience personas: 9 (all except Rob, the known low-frequency holdout — Value=Yes, non-gating).
-- In-audience at ≥9: **0 of 9**. Cluster sits at 6–8 (six at 8, two at 7, one at 6).
-- Bar NOT met. (Rob carried at 6, non-gating per the prior-panel holdout precedent. Aisha at 6 is an in-audience low-fit-but-real complaint, gating.)
+All 10 personas are IN-AUDIENCE (every one runs paced/timed multi-segment sessions —
+demo days, sprint demos, trainings, ops reviews, webinars, AMAs, design workshops, client
+walkthroughs, all-hands). No out-of-audience non-fits this round. Bar = in-audience ≥9; only
+Jules cleared it. Scores cluster 6–9 with a tight, fixable defect set.
 
-## The new feature itself: PASSED cleanly — NOT a surfacing failure
+## Grouped friction
 
-added-feature-buried check (the thing this round most feared): **does not apply.**
-- Sound toggle found in <5s WITHOUT a hint by ALL 10 testers (default Off, correct, top-right).
-- ALL 10 noticed the band color change live (GREEN→AMBER→RED).
-- behavior-green≠delight-correct check: the RED pulse is unanimously judged **CALM, not a strobe**
-  (cue-pulse opacity 1→0.72, 1.2s ease-in-out — "breathes"); band is "considered, not garish";
-  room-legible. The stage-cue feature as scoped is delight-correct and well-crafted.
+### TARGET-FEATURE defects (the new editing feature)
 
-So the new feature is not the problem. The advocacy ceiling comes from a DIFFERENT, pre-existing
-signal that the new red band now visually COLLIDES with.
+1. **[P0] Duration inline-edit does NOT select-all on focus → silently-wrong output.**
+   Cited by Aisha, Rob, Elena, Wen, Dana (5/10, all in-audience). Clicking a duration cell
+   lands the cursor at the END of the existing value, so typing "20" over "15" yields
+   "1520m" — a garbage total with NO max-value guard, silently corrupting every downstream
+   projected clock time. This is the single most-cited blocker AND maps directly to the
+   silently-wrong-output friction lesson (wrong clock time after an edit = P0). It bites the
+   single most common edit (changing a duration) and on mobile-by-tap (Dana). Name edits are
+   fine; only the numeric duration field is affected.
 
-## Single highest-leverage blocker (named precisely)
+2. **[P0] "Start show" IGNORES the Start-time field → silently-wrong output / broken trust.**
+   Cited by Wen and Dana (2/10, both in-audience, both run scheduled sessions). The editor
+   plans clock times off the entered Start time (e.g. 14:30), but hitting Start runs the live
+   show off the current wall-clock with no warning. The planned clocks the user built and may
+   have shared do not appear live. Either honor the field at Start, or relabel it "preview only."
 
-**The top whole-show drift chip shows GREEN "on time" while the current item's band is RED/overrun.**
-Two timing signals disagree in one glance — the exact failure mode for a facilitator scanning the
-screen mid-room. Raised independently by **Tomás, Dana, Elena, and Aisha** (all in-audience), and the
-single most-cited reason each capped at 7–8 instead of 9.
+3. **[P1] "Copy rundown as text" export appears MISSING / undiscoverable.**
+   Cited by Sam (in-audience; share-to-Notion/Slack is his core habit). The prompt's feature
+   set includes a "Copy rundown as text" export, but Sam found only "Copy current link" (a
+   share URL) and no plain-text copy anywhere. Either the export was not built, or it is
+   buried/conditional on a view Sam didn't reach — maps to added-feature-buried. NOTE
+   CONFLICT below.
 
-- This is a REAL DEFECT (logic/legibility), not a surfacing fix: the whole-show drift can legitimately
-  be "ahead/on-time" while the *current item* is over (earlier items banked slack). But presenting a
-  calm GREEN pill directly above a pulsing RED band reads as contradictory/broken at a glance.
-- One-pass fix for the builder: when the CURRENT ITEM is in overrun (band RED), the top chip must not
-  read calm green "on time." Reflect the active item's state in the header — e.g. surface "current item
-  +0:28 over" / shift the chip amber/red when the live item is over, OR clearly relabel the chip as
-  "whole-show drift" and visually subordinate it so the item band is the dominant signal. Make the two
-  signals legibly distinct so they never look like they're contradicting each other.
+4. **[P1 / CONFLICT] Structured inline editor not seen by 2 testers — discoverability/entry-path gap.**
+   Sam reports "no structured/inline editor — you edit by retyping lines in the textarea";
+   Priya reports "free-text-only, no per-row inline edit, no drag handles." The other 8
+   testers (Marcus, Wen, Tomás, Dana, Jules, Aisha, Rob, Elena) all clearly describe a
+   structured RUNDOWN table with the hint "Click any name or time to edit · reorder with ↑↓"
+   and working ↑/↓/× per row. This strongly implies the structured editor EXISTS but does not
+   surface in every entry path/state (Sam & Priya appear to have stayed in/returned to a
+   textarea-only view). Discoverability of the structured editor is inconsistent — maps to
+   added-feature-buried. Builder must confirm the editor renders on the path these two took
+   (and after "End & edit agenda").
 
-Secondary (carry to backlog, non-gating this round, each raised by 1–2 personas):
-- Share/co-host link copy says "snapshot" but the view is actually LIVE & reflows (Marcus, Jules, Sam) —
-  misleading copy on the feature sharers care most about; either fix copy to "live read-only" or make it
-  truly follow Next.
-- "Copied" confirmation missing on copy-link (Wen).
-- 1-min items render AMBER from second one (60s amber floor swallows the whole item) — minor, several noted.
-- Full-screen projector-only stage mode (Priya); H1 missing the word "timer" (Jules); durations-vs-clock
-  framing for workshop facilitators (Aisha).
+5. **[P2] Live editing during a RUNNING show not supported.**
+   Cited by Priya (and echoed by Jules re: stale share link). To nudge a slot mid-show you
+   must "End & edit agenda" and restart; the round-trip works but isn't live. Real enhancement
+   request, not a defect of the planning-view feature under test.
 
-## Verdict: ITERATE
+### PRE-EXISTING / UNRELATED nits
 
-The new STAGE CUES feature passed (surfaced, calm, legible, valued). But the bar (in-audience ≥9) is
-not met: 0 of 9 in-audience personas at ≥9. **One fix unblocks the cluster** — resolve the
-GREEN-header-vs-RED-band contradiction so the header reflects the current item's overrun state (or is
-clearly subordinated as whole-show drift). That single change is what four in-audience personas named
-as the gap between their 7–8 and a 9. Fix it, re-run the panel.
+- **Ugly base64 share URL** (~190 chars) — Marcus. Pre-existing share mechanism, not the edit feature.
+- **No "Copied!" confirmation on Copy-link** — Sam (Marcus saw "✓ Copied!" — possibly path-dependent). Minor.
+- **Empty-state dead end**: greyed placeholder agenda looks pre-filled but Start stays
+  disabled with "Add at least one item" — Sam, Jules, Aisha. Brief cold-open confusion; pre-existing empty state.
+- **Data-safety story invisible** (no "nothing sent to a server" statement) — Tomás (and Priya
+  verified it client-side herself). Pre-existing copy gap, not the edit feature.
+- **Pasted formats normalize** ("Warmup - 5 min" → "Warmup 5") — Aisha. Surprising but correct; pre-existing parser.
 
-## Per-persona detail pointers
-- apps/showclock/panel/round1-Priya.md
-- apps/showclock/panel/round1-Marcus.md
-- apps/showclock/panel/round1-Wen.md
-- apps/showclock/panel/round1-Tomás.md
-- apps/showclock/panel/round1-Dana.md
-- apps/showclock/panel/round1-Jules.md
-- apps/showclock/panel/round1-Aisha.md
-- apps/showclock/panel/round1-Rob.md
-- apps/showclock/panel/round1-Elena.md
-- apps/showclock/panel/round1-Sam.md
+### PERSONA-INHERENT non-fits
+- None. All 10 are genuine in-audience fits.
+
+### Mobile-375
+- Dana and Jules both edited the rundown by tap at 375px successfully (reorder, edit, add,
+  delete). The select-all-on-focus duration bug (#1) ALSO reproduced on mobile by tap (Dana).
+  No 375px-specific layout breakage reported.
+
+## Fix plan for Round 2 (in-audience bar 1/10 → not met)
+
+1. **(motivated by #1, Aisha/Rob/Elena/Wen/Dana — 5 testers) Select-all-on-focus for the
+   duration (and name) inline-edit fields.** On focus, select the entire existing value so
+   typing overwrites instead of appending. ADD a sane max/validation guard on duration
+   (reject/clamp absurd values like 2520) so a fat-finger can never silently produce a
+   42-hour item or garbage projected clocks. This single fix lifts the largest cluster.
+
+2. **(motivated by #2, Wen/Dana — 2 testers) Make "Start show" honor the Start-time field.**
+   Run the live show's planned clocks off the entered Start time; if the design intends
+   wall-clock-now, relabel the field "preview only / planning display" and warn on Start.
+   Killing this silently-wrong behavior is required (P0 trust).
+
+3. **(motivated by #3 & #4, Sam/Priya) Ensure the structured inline editor AND the "Copy
+   rundown as text" export are present and discoverable on ALL entry paths** (initial paste,
+   after "End & edit agenda", and whatever path Sam/Priya took). Add/verify a visible "Copy
+   rundown as text" button alongside "Copy current link"; confirm the ↑/↓/× structured table
+   always renders once items parse. If the text-export was never built, build it.
+
+4. **(motivated by Marcus — P2, optional) Consider a shorter/cleaner share URL** if cheap;
+   otherwise backlog.
+
+Round-2 target: re-run the same 10 in-audience testers; expect the select-all fix +
+Start-time honesty + text-export to move the 6–8 cluster to ≥9.

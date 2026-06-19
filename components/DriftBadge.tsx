@@ -1,28 +1,30 @@
 "use client";
 
-import { driftLabel, driftMinutes } from "@/lib/agenda";
+import { driftLabel } from "@/lib/agenda";
 
-// Badge own-sign thresholds for behind severity (in minutes)
-const BEHIND_RED_THRESHOLD_MIN = 5;
+// Badge thresholds in milliseconds
+const GRACE_MS = 5_000; // 5s grace — absorbs clock jitter, matches driftLabel grace band
+const BEHIND_RED_MS = 5 * 60_000; // 5 min behind → red
 
 /**
  * Derive the badge's own color/state from the whole-show drift value.
  * Color always agrees with words — never red while saying "ahead".
+ * Uses ms-level precision so a real 10-second overrun (current item over) shows amber,
+ * not green — closing the silent green-while-red-item contradiction.
  *
  * States:
- *   on-time      : driftMs rounds to 0 min
- *   ahead        : driftMs < 0 (negative = ahead)
- *   behind-amber : driftMs > 0, < BEHIND_RED_THRESHOLD_MIN min
- *   behind-red   : driftMs >= BEHIND_RED_THRESHOLD_MIN min
+ *   on-time      : |driftMs| < GRACE_MS (15s)
+ *   ahead        : driftMs < -GRACE_MS
+ *   behind-amber : driftMs > GRACE_MS, < BEHIND_RED_MS
+ *   behind-red   : driftMs >= BEHIND_RED_MS (5 min)
  */
 export type BadgeDriftState = "on-time" | "ahead" | "behind-amber" | "behind-red";
 
 export function badgeDriftState(driftMs: number, neutral: boolean): BadgeDriftState {
   if (neutral) return "on-time";
-  const m = driftMinutes(driftMs);
-  if (m === 0) return "on-time";
-  if (m < 0) return "ahead";
-  return m >= BEHIND_RED_THRESHOLD_MIN ? "behind-red" : "behind-amber";
+  if (Math.abs(driftMs) < GRACE_MS) return "on-time";
+  if (driftMs < 0) return "ahead";
+  return driftMs >= BEHIND_RED_MS ? "behind-red" : "behind-amber";
 }
 
 export default function DriftBadge({

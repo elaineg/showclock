@@ -9,6 +9,12 @@ export type Session = {
   a: number[];
   /** random session id minted at Start (used for presenter-tab ownership) */
   id?: string;
+  /**
+   * Pre-roll: epoch-ms of the planned start time (when the show should begin).
+   * Present only while the show is in the "STARTS IN …" countdown state
+   * (a is still empty). Absent once the show has started or if start was immediate.
+   */
+  pr?: number;
 };
 
 export function encodeSession(s: Session): string {

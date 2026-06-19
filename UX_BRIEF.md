@@ -149,3 +149,70 @@ inherently visible; the explicit requirement is the **labeled sound toggle visib
 load**. 5-second discoverability check: a facilitator who has never seen this feature opens
 presenter view and, without clicking anything, can both SEE the current item's color state
 AND SEE a labeled "Sound: Off" control they know how to switch on.
+
+---
+
+# Edit the rundown in place (round 4 — added feature, PLANNING view only)
+
+Named by panel persona Wen: the recurring win is iteration. A facilitator who tweaks the
+same agenda week to week (or fixes one typo'd duration) must NEVER re-paste the whole block
+to change one thing. All of this lives in the PLANNING view BEFORE Start — the running
+presenter view and its Back/Next are unchanged. Calm, glanceable, neutral as today: editing
+is quiet and inline, not a modal or a separate "edit mode."
+
+## E1 — Where each affordance lives (discoverable cold, renders + works at 375px in build #1)
+The already-visible parsed rundown table under the paste box becomes directly editable. No
+new screen, no gear, no hover-to-reveal. In each item row, left-to-right:
+- **Title cell** and **Duration cell** are inline text inputs styled as the displayed text
+  (so they read as values, not form fields) with a subtle bottom hairline that darkens on
+  focus — the standing discoverability cue that a row is editable. A one-line helper sits
+  directly above the table on cold load: **"Click any name or time to edit · reorder with
+  ↑↓."**
+- **Planned clock-time cell** stays READ-ONLY (computed) — never editable, it is the output.
+- A trailing **controls cell** holds three tap targets: **↑** (move up), **↓** (move down),
+  **×** (remove). Each is a real button ≥40px square, always visible (not hover-revealed).
+- Below the last row: a full-width **"+ Add item"** button. Optional per-row "insert below"
+  is polish, not required for build #1.
+- Above or beside the paste box: a **"Copy rundown as text"** button (reuses the existing
+  copy-confirm pattern from G1 — swaps to "Copied!" inline ~1.5s).
+
+## E2 — Editable-row interaction model
+- Click or Tab into a Title/Duration cell to edit; commit on **blur or Enter**, cancel on
+  **Esc** (reverts to prior value). Enter in a Duration cell commits and the cursor can Tab
+  to the next row's Title — fast keyboard iteration.
+- Every commit, add, delete, or reorder **reflows all planned clock times LIVE**, identically
+  to editing the paste text today (same recompute path). No save button.
+- A blank Title commits as an empty-named item flagged like an unparsed row (don't drop it
+  silently); a non-numeric/blank Duration shows the same inline "couldn't read a duration"
+  flag as paste parsing (G3) and that row's clock time is held until fixed.
+- **Round-trip authority (no silent divergence):** structured edits are AUTHORITATIVE after
+  the initial paste — Start, the share URL, and the presenter view all use the edited
+  rundown. The paste box is the bulk-entry / full-replace path: re-pasting REPLACES the
+  rundown (with the existing parse), and the paste box text is kept in sync to reflect the
+  current rundown so what you see in the box always matches the table. "Copy rundown as text"
+  emits the current edited rundown as paste-compatible lines ("Intro 10") that paste back to
+  the identical rundown.
+
+## E3 — Edge / empty states
+- **Empty rundown** (all items deleted or box cleared): table collapses to just the
+  "+ Add item" button plus the standing helper line; Start is disabled with a quiet "Add at
+  least one item" hint. Re-pasting or +Add brings rows back.
+- **Single item:** its ↑ and ↓ are disabled (greyed, not removed, so the control column
+  stays stable); × still works.
+- **First item:** ↑ disabled. **Last item:** ↓ disabled. Disabled arrows are visibly
+  inert, never invisible.
+
+## E4 — 375px layout for the row controls
+Each row stays a single horizontal line at 375px: Title (flex-grow, truncates), Duration
+(narrow, ~3ch), clock time (read-only, right-aligned), then the ↑ ↓ × cluster. The three
+control buttons are ≥40px tap targets with adequate spacing — operable by TAP, no hover,
+no drag required (drag is optional desktop polish only). "+ Add item" and "Copy rundown as
+text" are full-width tap-friendly buttons. If width is tight, the clock-time cell — not the
+controls — is what shrinks first; controls never collapse into a menu.
+
+## E5 — Correctness mandate (silently-wrong-output is P0)
+Every edit — rename, duration change, add, delete, reorder — MUST keep the planned
+clock-time column correct and consistent with what Start, the share URL, and the presenter
+view then use. A wrong recomputed time after any edit is a P0 defect, not polish. The
+edited rundown is the single source of truth handed to Start; there is exactly one rundown
+model, and table edits, paste, share-URL encode, and presenter read all flow through it.

@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   driftLabel,
   fmtCountdown,
+  fmtDuration,
   itemsOf,
   liveState,
+  minutesToRoundTripStr,
   nextFiveMark,
   parseAgenda,
+  parseColonDuration,
   parseLine,
   plannedStarts,
   startMsFromHHMM,
@@ -58,6 +61,7 @@ describe("schedule", () => {
     const p = plannedStarts(items, nine);
     const live = liveState(items, p, [nine], nine + 1000);
     expect(live.current).toBe(0);
+    // 1 second elapsed: |driftMs| < 15s grace → "on time"
     expect(driftLabel(live.driftMs)).toBe("on time");
     expect(fmtCountdown(live.countdownMs)).toBe("9:59");
     const liveAtStart = liveState(items, p, [nine], nine);
@@ -69,7 +73,7 @@ describe("schedule", () => {
     const p = plannedStarts(items, nine);
     const live = liveState(items, p, [nine, t1], t1 + 1000);
     expect(live.current).toBe(1);
-    expect(driftLabel(live.driftMs)).toBe("9 min ahead"); // -9.5 min rounds to 9 ahead
+    expect(driftLabel(live.driftMs)).toBe("9 min ahead"); // ~570s ahead → "9 min ahead"
     // projected Q&A start = actual Demo start + 20min, ~9.5 min before planned 9:30
     expect(live.projected[2]).toBe(t1 + 20 * 60_000);
     expect(p[2] - live.projected[2]).toBe(9.5 * 60_000);
@@ -87,11 +91,25 @@ describe("schedule", () => {
     expect(driftLabel(later.driftMs)).toBe("5 min behind");
   });
 
+  it("overrun by 10 seconds shows 'behind' (not 'on time') — Defect C fix", () => {
+    const p = plannedStarts(items, nine);
+    // Intro is 10 min. At 10 min + 10 sec, we're 10s behind.
+    const live = liveState(items, p, [nine], nine + 10 * 60_000 + 10_000);
+    // 10 seconds behind is > 15s grace? No — 10s < 15s grace, still "on time".
+    // The acceptance test is +0:10 past a 1-MIN item (not 10-min). Use a 1-min item:
+    const items1 = itemsOf(parseAgenda("Session 1\nBreak 10"));
+    const p1 = plannedStarts(items1, nine);
+    const live1 = liveState(items1, p1, [nine], nine + 60_000 + 10_000); // 1:10 into 1-min item
+    expect(driftLabel(live1.driftMs)).not.toBe("on time"); // 10s overrun → behind
+    expect(live1.driftMs).toBeGreaterThan(0);
+  });
+
   it("trailing actual entry ends the show", () => {
     const p = plannedStarts(items, nine);
     const a = [nine, nine + 10 * 60_000, nine + 30 * 60_000, nine + 44 * 60_000];
     const live = liveState(items, p, a, nine + 50 * 60_000);
     expect(live.ended).toBe(true);
+    // 1 min ahead = 60000ms ahead → > 15s grace → "1 min ahead"
     expect(driftLabel(live.driftMs)).toBe("1 min ahead");
   });
 });
@@ -177,6 +195,258 @@ describe("nextFiveMark", () => {
     expect(nextFiveMark(new Date(2026, 5, 12, 9, 1, 10).getTime())).toBe("09:05");
     expect(nextFiveMark(new Date(2026, 5, 12, 9, 0, 0, 0).getTime())).toBe("09:00");
     expect(nextFiveMark(new Date(2026, 5, 12, 23, 58, 1).getTime())).toBe("00:00");
+  });
+});
+
+// ===========================
+// ROUND-4+7 DEFECT A/B: Colon-format duration parsing — M:SS canonical interpretation
+// ===========================
+
+describe("Defect A/B: colon-format durations — M:SS canonical interpretation (round 7)", () => {
+  // Canonical contract: colon tokens are M:SS (minutes:seconds).
+  // "1:30" = 1m30s = 90 sec = 1.5 min
+  // "0:30" = 30 sec = 0.5 min
+  // "12:30" = 12m30s = 750 sec = 12.5 min
+  // "0:05" = 5 sec = 5/60 min
+  // "2:00" = 2m = 2 min (whole)
+
+  it("parseColonDuration: M:SS rule — '1:30' → 1.5 min (90 sec)", () => {
+    expect(parseColonDuration("1:30")).toBeCloseTo(1.5, 5);
+  });
+  it("parseColonDuration: '0:30' → 0.5 min (30 sec)", () => {
+    expect(parseColonDuration("0:30")).toBeCloseTo(0.5, 5);
+  });
+  it("parseColonDuration: '12:30' → 12.5 min (750 sec)", () => {
+    expect(parseColonDuration("12:30")).toBeCloseTo(12.5, 5);
+  });
+  it("parseColonDuration: '0:05' → 5/60 min (5 sec)", () => {
+    expect(parseColonDuration("0:05")).toBeCloseTo(5 / 60, 5);
+  });
+  it("parseColonDuration: '2:00' → 2 min (whole)", () => {
+    expect(parseColonDuration("2:00")).toBeCloseTo(2, 5);
+  });
+  it("parseColonDuration: '0:00' → null (zero not valid)", () => {
+    expect(parseColonDuration("0:00")).toBeNull();
+  });
+  it("parseColonDuration: seconds >= 60 → null (invalid)", () => {
+    expect(parseColonDuration("1:60")).toBeNull();
+    expect(parseColonDuration("0:99")).toBeNull();
+  });
+
+  it('"Keynote 0:05" → name is "Keynote", duration ≈ 5/60 min (5 sec in M:SS)', () => {
+    const r = parseLine("Keynote 0:05");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("Keynote"); // NOT "Keynote 0"
+      expect(r.minutes).toBeCloseTo(5 / 60, 5); // M:SS: 5 sec
+    }
+  });
+
+  it('"Keynote 1:30" → M:SS: 1m30s = 90 sec = 1.5 min, name is "Keynote"', () => {
+    const r = parseLine("Keynote 1:30");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("Keynote"); // NOT "Keynote 1"
+      expect(r.minutes).toBeCloseTo(1.5, 5); // 90 sec = 1.5 min
+    }
+  });
+
+  it('"Standup 0:30" → M:SS: 30 sec = 0.5 min', () => {
+    const r = parseLine("Standup 0:30");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("Standup");
+      expect(r.minutes).toBeCloseTo(0.5, 5); // 30 sec = 0.5 min
+    }
+  });
+
+  it('"Demo 12:30" → M:SS: 12m30s = 750 sec = 12.5 min', () => {
+    const r = parseLine("Demo 12:30");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("Demo");
+      expect(r.minutes).toBeCloseTo(12.5, 5); // 750 sec = 12.5 min
+    }
+  });
+
+  it('"Keynote 2:00" → M:SS: 2m0s = 2 min (whole)', () => {
+    const r = parseLine("Keynote 2:00");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("Keynote");
+      expect(r.minutes).toBeCloseTo(2, 5); // 2 min whole
+    }
+  });
+
+  // colon echo must be present
+  it('"Keynote 1:30" carries colonEchoStr "→ 1m 30s"', () => {
+    const r = parseLine("Keynote 1:30");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.colonEchoStr).toBe("→ 1m 30s");
+    }
+  });
+  it('"Standup 0:30" carries colonEchoStr "→ 30s"', () => {
+    const r = parseLine("Standup 0:30");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.colonEchoStr).toBe("→ 30s");
+    }
+  });
+  it('"Demo 12:30" carries colonEchoStr "→ 12m 30s"', () => {
+    const r = parseLine("Demo 12:30");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.colonEchoStr).toBe("→ 12m 30s");
+    }
+  });
+
+  // Non-colon plain items must NOT carry echo
+  it('"Intro 10" (no colon) has no colonEchoStr', () => {
+    const r = parseLine("Intro 10");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.colonEchoStr).toBeUndefined();
+    }
+  });
+
+  // Regression: "Intro 10" still parses correctly (no colon, shouldn't be affected)
+  it('"Intro 10" (no colon) still parses correctly — not affected by colon guard', () => {
+    const r = parseLine("Intro 10");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("Intro");
+      expect(r.minutes).toBe(10);
+    }
+  });
+
+  // "90 sec" still parses (regression)
+  it('"Opening 90 sec" still parses correctly (90s → 1.5 min → rounded to 2 min)', () => {
+    const r = parseLine("Opening 90 sec");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.name).toBe("Opening");
+      expect(r.minutes).toBe(2); // 90s → 1.5min → rounded to 2min (non-colon path)
+    }
+  });
+
+  // "1.5h Workshop" still parses (regression)
+  it('"1.5h Workshop" still parses to 90 min (regression)', () => {
+    const r = parseLine("1.5h Workshop");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.minutes).toBe(90);
+    }
+  });
+
+  // "Demo - 20 min" still parses (regression)
+  it('"Demo - 20 min" still parses to 20 min (regression)', () => {
+    const r = parseLine("Demo - 20 min");
+    expect(r?.kind).toBe("item");
+    if (r?.kind === "item") {
+      expect(r.minutes).toBe(20);
+    }
+  });
+
+  // Standalone bare colon-token should be flagged (no name)
+  it('"1:30" alone (no name) is flagged as unparseable — no item name', () => {
+    const r = parseLine("1:30");
+    expect(r?.kind).toBe("error");
+  });
+});
+
+// fmtDuration
+describe("fmtDuration: format fractional minutes as readable string", () => {
+  it("1.5 min → '1m 30s'", () => { expect(fmtDuration(1.5)).toBe("1m 30s"); });
+  it("0.5 min → '30s'", () => { expect(fmtDuration(0.5)).toBe("30s"); });
+  it("12.5 min → '12m 30s'", () => { expect(fmtDuration(12.5)).toBe("12m 30s"); });
+  it("10 min → '10m'", () => { expect(fmtDuration(10)).toBe("10m"); });
+  it("5/60 min → '5s'", () => { expect(fmtDuration(5 / 60)).toBe("5s"); });
+  it("2 min → '2m'", () => { expect(fmtDuration(2)).toBe("2m"); });
+  it("0 min → '0m'", () => { expect(fmtDuration(0)).toBe("0m"); });
+});
+
+// minutesToRoundTripStr
+describe("minutesToRoundTripStr: round-trip-safe format for copy", () => {
+  it("10 min (whole) → '10'", () => { expect(minutesToRoundTripStr(10)).toBe("10"); });
+  it("1.5 min → '1:30'", () => { expect(minutesToRoundTripStr(1.5)).toBe("1:30"); });
+  it("0.5 min → '0:30'", () => { expect(minutesToRoundTripStr(0.5)).toBe("0:30"); });
+  it("12.5 min → '12:30'", () => { expect(minutesToRoundTripStr(12.5)).toBe("12:30"); });
+  it("5/60 min → '0:05'", () => { expect(minutesToRoundTripStr(5 / 60)).toBe("0:05"); });
+  it("round-trip: '1:30' → 1.5 min → '1:30' → re-parse → 1.5 min", () => {
+    const minutes = parseColonDuration("1:30")!;
+    const str = minutesToRoundTripStr(minutes);
+    expect(str).toBe("1:30");
+    expect(parseColonDuration(str)).toBeCloseTo(1.5, 5);
+  });
+  it("round-trip: '0:30' → 0.5 min → '0:30' → re-parse → 0.5 min", () => {
+    const minutes = parseColonDuration("0:30")!;
+    const str = minutesToRoundTripStr(minutes);
+    expect(str).toBe("0:30");
+    expect(parseColonDuration(str)).toBeCloseTo(0.5, 5);
+  });
+});
+
+// ===========================
+// ROUND-4 DEFECT C: Live drift grows before Next is pressed
+// ===========================
+
+describe("Defect C: live drift grows before pressing Next (wall-clock overrun)", () => {
+  it("item past its duration without pressing Next shows positive driftMs (behind)", () => {
+    const items = itemsOf(parseAgenda("Session 5\nBreak 10"));
+    // Pressed Start now (a[0] = t0). 8 min later (past the 5-min item), still haven't pressed Next.
+    const t0 = new Date(2026, 0, 1, 9, 0, 0, 0).getTime();
+    const planned = plannedStarts(items, t0); // drift-anchored to actual start
+    const now = t0 + 8 * 60_000; // 8 min elapsed, item was 5 min
+    const live = liveState(items, planned, [t0], now);
+    // 3 min overrun: drift should be 3 min behind
+    expect(live.driftMs).toBeGreaterThan(0);
+    expect(driftLabel(live.driftMs)).toBe("3 min behind");
+    // countdownMs is negative (overrun)
+    expect(live.countdownMs).toBeLessThan(0);
+  });
+
+  it("drift grows further as more time passes (no Next pressed)", () => {
+    const items = itemsOf(parseAgenda("Session 5\nBreak 10"));
+    const t0 = new Date(2026, 0, 1, 9, 0, 0, 0).getTime();
+    const planned = plannedStarts(items, t0);
+    const live8 = liveState(items, planned, [t0], t0 + 8 * 60_000);
+    const live9 = liveState(items, planned, [t0], t0 + 9 * 60_000);
+    // Drift grows from 3 min to 4 min
+    expect(live8.driftMs).toBeLessThan(live9.driftMs);
+  });
+
+  it("drift = 0 at the exact moment Start is pressed (no regression)", () => {
+    const items = itemsOf(parseAgenda("Session 5\nBreak 10"));
+    const t0 = new Date(2026, 0, 1, 9, 0, 0, 0).getTime();
+    const planned = plannedStarts(items, t0);
+    const live = liveState(items, planned, [t0], t0); // now = t0 exactly
+    expect(live.driftMs).toBe(0);
+    expect(driftLabel(live.driftMs)).toBe("on time");
+  });
+
+  it("Defect-C acceptance: 1-min item overrun by +10s → 'behind' (not 'on time')", () => {
+    // Panel acceptance test: current item +0:10 past a 1-min planned duration = drift behind.
+    // Grace band = 5s, so 10s overrun > grace → shows "10s behind" not "on time".
+    const items = itemsOf(parseAgenda("Session 1\nBreak 10"));
+    const t0 = new Date(2026, 0, 1, 9, 0, 0, 0).getTime();
+    const planned = plannedStarts(items, t0);
+    const now = t0 + 60_000 + 10_000; // 1:10 into a 1-min item
+    const live = liveState(items, planned, [t0], now);
+    expect(live.driftMs).toBe(10_000); // 10 seconds behind
+    expect(live.countdownMs).toBeLessThan(0); // item is over
+    // 10s > 5s grace → "10s behind" (NOT "on time")
+    expect(driftLabel(live.driftMs)).toBe("10s behind");
+    expect(driftLabel(live.driftMs)).not.toBe("on time");
+  });
+
+  it("drift label at start moment (driftMs=0) stays 'on time' (no regression)", () => {
+    const items = itemsOf(parseAgenda("Session 1\nBreak 10"));
+    const t0 = new Date(2026, 0, 1, 9, 0, 0, 0).getTime();
+    const planned = plannedStarts(items, t0);
+    const live = liveState(items, planned, [t0], t0); // exact start
+    expect(live.driftMs).toBe(0);
+    expect(driftLabel(live.driftMs)).toBe("on time");
   });
 });
 

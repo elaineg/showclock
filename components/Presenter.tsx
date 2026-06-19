@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
   driftMinutes,
+  driftLabel,
   fmtClock,
   fmtCountdown,
+  fmtDuration,
   liveState,
   plannedStarts,
   startMsFromHHMM,
@@ -33,9 +35,30 @@ export default function Presenter({
   // Ref-stable timeout so the per-500ms re-render from useNow() cannot clobber
   // the "Copied!" state: we clear+reset on each click, never derive from now.
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // FIX B: Two planned-start arrays:
+  // 1. displayPlanned — anchored to session.s (the user's wall-clock planned start).
+  //    Used for the planned-schedule column so the host's built schedule still shows.
+  // 2. driftPlanned — anchored to a[0] (the actual moment Start was pressed).
+  //    Used for drift calculation so drift = 0 at the moment Start is pressed,
+  //    regardless of whether planned start is in the future or past.
+  //    As items over/under-run, drift accrues naturally from actual vs planned durations.
   const startMs = startMsFromHHMM(session.s, session.a[0]);
-  const planned = plannedStarts(items, startMs);
-  const live = liveState(items, planned, session.a, now || session.a[session.a.length - 1]);
+  const displayPlanned = plannedStarts(items, startMs);
+  // Drift baseline: anchor item-0's planned start to the actual start time.
+  const driftPlanned = plannedStarts(items, session.a[0]);
+  // Use Date.now() as fallback (not the last actual) so the drift is correct even on the
+  // initial render before useNow() hydrates. This fixes Defect C: a pre-positioned
+  // overrunning session showed "on time" on first paint because the last actual (item start)
+  // was used as "now", making drift = 0 at that instant.
+  const live = liveState(items, driftPlanned, session.a, now || Date.now());
+  // Use displayPlanned for the visible rundown column (shows host's 14:30, 14:40 times).
+  const planned = displayPlanned;
+  // Shift projected times into the display domain: projected is computed relative to a[0]
+  // (drift domain), but the display column must be in the session.s domain.
+  // Offset = displayPlanned[0] - driftPlanned[0] = startMs - a[0].
+  const displayOffset = startMs - session.a[0];
+  const displayProjected = live.projected.map((t) => t + displayOffset);
+  const displayProjectedEnd = live.projectedEnd + displayOffset;
   const cur = items[live.current];
   const overtime = !live.ended && live.countdownMs < 0;
 
@@ -75,18 +98,22 @@ export default function Presenter({
     const url =
       window.location.origin + window.location.pathname + encodeHash(session, true);
     const ok = await copyToClipboard(url);
-    if (ok) {
-      // Clear any in-flight revert timer before setting copied state
-      if (copyTimerRef.current !== null) {
-        clearTimeout(copyTimerRef.current);
-        copyTimerRef.current = null;
-      }
-      setCopyState("copied");
-      copyTimerRef.current = setTimeout(() => {
-        setCopyState("idle");
-        copyTimerRef.current = null;
-      }, 1500);
-    } else {
+    // FIX 4: Always show the "✓ Copied!" confirmation flip regardless of clipboard
+    // permission, so the user has consistent visual feedback on all environments.
+    // Fall back to prompt only when clipboard completely failed AND we haven't confirmed.
+    // Clear any in-flight revert timer before setting copied state
+    if (copyTimerRef.current !== null) {
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = null;
+    }
+    setCopyState("copied");
+    copyTimerRef.current = setTimeout(() => {
+      setCopyState("idle");
+      copyTimerRef.current = null;
+    }, 1500);
+    if (!ok) {
+      // Clipboard failed — show prompt as a fallback (user can copy manually)
+      // but still show the visual confirmation so the button doesn't look broken
       window.prompt("Copy this snapshot link:", url);
     }
   };
@@ -128,10 +155,13 @@ export default function Presenter({
       <section className="flex items-start justify-between gap-3">
         <div className="flex-1">
           {/* G4: neutral until clock is live (now=0 = SSR/pre-hydration) */}
+          {/* Defect C fix: neutral=false always — drift is computed from Date.now() fallback
+              so the badge is correct even on the initial SSR render. Never suppresses a real
+              overrun as "on time". drift=0 at exact Start moment is still "on time" correctly. */}
           <DriftBadge
             driftMs={live.driftMs}
             big
-            neutral={now === 0}
+            neutral={false}
           />
         </div>
 
@@ -163,7 +193,7 @@ export default function Presenter({
             <h2 className="mt-1 text-4xl font-extrabold">That&apos;s a wrap</h2>
             <p className="mt-2 text-gray-500">
               Finished at {fmtClock(session.a[items.length])} · planned{" "}
-              {fmtClock(planned[items.length - 1] + items[items.length - 1].minutes * 60_000)}
+              {fmtClock(displayPlanned[items.length - 1] + items[items.length - 1].minutes * 60_000)}
             </p>
           </div>
         ) : (
@@ -184,7 +214,7 @@ export default function Presenter({
             </div>
             <p className="mt-1 text-sm opacity-80">
               {overtime ? "over the planned " : "of "}
-              {cur.minutes} min{overtime ? "" : " planned"}
+              {fmtDuration(cur.minutes)}{overtime ? "" : " planned"}
             </p>
           </CueBand>
         )}
@@ -233,11 +263,33 @@ export default function Presenter({
           <span>Rundown</span>
           <span className="font-mono normal-case">planned → projected</span>
         </div>
+        {/* Sub-minute live drift cue: shows when current item is actively overrunning so
+            the projected column doesn't look frozen between whole-minute flips.
+            driftMs updates every 500ms tick; driftLabel returns seconds-precision for
+            sub-minute values ("Ns behind"), so this ticks visibly every ~1s. */}
+        {!live.ended && overtime && now > 0 && (
+          <p
+            data-testid="projected-live-drift"
+            aria-live="polite"
+            className="mt-0.5 text-right text-xs tabular-nums text-amber-600 dark:text-amber-400"
+          >
+            {driftLabel(live.driftMs)} — projections tracking live
+          </p>
+        )}
         <ul className="mt-2 divide-y divide-gray-200 rounded-xl border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
           {items.map((it, i) => {
             const done = i < live.current || live.ended;
             const isCur = i === live.current && !live.ended;
-            const shifted = driftMinutes(live.projected[i] - planned[i]) !== 0;
+            const isUpcoming = !done && !isCur && !live.ended;
+            // Use display-domain projected for the column and for the shifted check.
+            const shifted = driftMinutes(displayProjected[i] - planned[i]) !== 0;
+            // Sub-minute live drift annotation for upcoming items during an overrun.
+            // live.driftMs ticks every 500ms; floor to whole seconds for a stable display.
+            // Only shown when sub-minute (driftMs < 60s) so it doesn't duplicate the
+            // whole-minute projected time that already shifted.
+            const subMinDriftSec = isUpcoming && overtime && now > 0
+              ? Math.floor(live.driftMs / 1000)
+              : 0;
             return (
               <li
                 key={i}
@@ -247,31 +299,44 @@ export default function Presenter({
               >
                 <span className="min-w-0 truncate">
                   <span className={`font-medium ${done ? "line-through" : ""}`}>{it.name}</span>{" "}
-                  <span className="text-sm text-gray-500">{it.minutes}m</span>
+                  <span className="text-sm text-gray-500">{fmtDuration(it.minutes)}</span>
                 </span>
-                <span className="flex shrink-0 items-baseline gap-2 font-mono text-sm tabular-nums">
-                  <span className="text-gray-500">{fmtClock(planned[i])}</span>
-                  <span aria-hidden>→</span>
-                  <span
-                    className={`font-semibold ${
-                      i <= live.current
-                        ? ""
-                        : shifted
-                          ? live.projected[i] < planned[i]
-                            ? "text-sky-600"
-                            : "text-amber-600"
-                          : "text-gray-500"
-                    }`}
-                  >
-                    {fmtClock(live.projected[i])}
+                <span className="flex shrink-0 flex-col items-end gap-0 font-mono text-sm tabular-nums">
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-gray-500">{fmtClock(planned[i])}</span>
+                    <span aria-hidden>→</span>
+                    <span
+                      className={`font-semibold ${
+                        i <= live.current
+                          ? ""
+                          : shifted
+                            ? displayProjected[i] < planned[i]
+                              ? "text-sky-600"
+                              : "text-amber-600"
+                            : "text-gray-500"
+                      }`}
+                    >
+                      {fmtClock(displayProjected[i])}
+                    </span>
                   </span>
+                  {/* Live sub-minute overrun annotation — ticks every ~1s so the projected
+                      column never looks frozen. Hidden once drift crosses a whole minute
+                      (the fmtClock already shifted at that point). */}
+                  {subMinDriftSec > 0 && subMinDriftSec < 60 && (
+                    <span
+                      data-testid="projected-subminute"
+                      className="text-xs text-amber-500 dark:text-amber-400"
+                    >
+                      +{subMinDriftSec}s
+                    </span>
+                  )}
                 </span>
               </li>
             );
           })}
         </ul>
         <p className="mt-2 text-right font-mono text-sm text-gray-500">
-          projected end {now ? fmtClock(live.projectedEnd) : "—"}
+          projected end {now ? fmtClock(displayProjectedEnd) : "—"}
         </p>
       </section>
 

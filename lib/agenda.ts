@@ -1,10 +1,10 @@
 // Agenda parsing and schedule math. Pure functions, no React.
 
 export type ParsedLine =
-  | { kind: "item"; name: string; minutes: number; raw: string }
+  | { kind: "item"; name: string; minutes: number; raw: string; colonEchoStr?: string }
   | { kind: "error"; raw: string };
 
-export type Item = { name: string; minutes: number };
+export type Item = { name: string; minutes: number; colonEchoStr?: string };
 
 // ---- unit helpers ----
 
@@ -51,9 +51,131 @@ function hasUnrecognizedExplicitUnit(line: string): boolean {
   return false;
 }
 
+/**
+ * Attempt to parse a colon-format duration token at the END of a line.
+ * Canonical interpretation: MINUTES:SECONDS (m:ss).
+ * Examples:
+ *   "0:05"  → 0m05s = 5 sec  = 5/60 min
+ *   "0:30"  → 0m30s = 30 sec = 0.5 min
+ *   "1:30"  → 1m30s = 90 sec = 1.5 min
+ *   "12:30" → 12m30s = 750 sec = 12.5 min
+ *   "2:00"  → 2m00s = 120 sec = 2 min
+ * Returns fractional minutes (> 0) or null if the token doesn't look like a colon duration.
+ * The LEFT part of a colon token is NEVER silently merged into the item name.
+ */
+export function parseColonDuration(token: string): number | null {
+  const m = token.match(/^(\d{1,3}):(\d{2})$/);
+  if (!m) return null;
+  const minutes = parseInt(m[1], 10);
+  const seconds = parseInt(m[2], 10);
+  if (seconds >= 60) return null; // invalid seconds field
+  const totalSec = minutes * 60 + seconds;
+  if (totalSec <= 0) return null;
+  return totalSec / 60; // fractional minutes
+}
+
+/**
+ * Format fractional minutes as a human-readable string.
+ * Examples: 1.5 → "1m 30s", 0.5 → "30s", 12.5 → "12m 30s", 10 → "10m", 0.0833... → "5s"
+ */
+export function fmtDuration(minutes: number): string {
+  if (minutes <= 0) return "0m";
+  const totalSec = Math.round(minutes * 60);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  if (m === 0) return `${s}s`;
+  if (s === 0) return `${m}m`;
+  return `${m}m ${s}s`;
+}
+
+/**
+ * Convert fractional minutes back to a round-trip-safe string for itemsToText.
+ * Whole minutes → plain integer "N".
+ * Sub-minute or mixed → "M:SS" colon form that re-parses identically (M:SS).
+ */
+export function minutesToRoundTripStr(minutes: number): string {
+  const totalSec = Math.round(minutes * 60);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  if (s === 0) return String(m); // whole minutes — plain integer
+  return `${m}:${String(s).padStart(2, "0")}`; // M:SS
+}
+
+/**
+ * Generate the echo text for a colon-format token, e.g. "1:30" → "→ 1m 30s".
+ * Returns null if the token is not a colon format or parses to 0.
+ */
+export function colonEcho(token: string): string | null {
+  const minutes = parseColonDuration(token);
+  if (minutes === null) return null;
+  return `→ ${fmtDuration(minutes)}`;
+}
+
+/**
+ * Parse a raw duration string typed into the inline duration editor.
+ * Canonical contract (same as paste path):
+ *   "45"    → 45 min (plain integer)
+ *   "1:30"  → 1m30s = 1.5 min (M:SS)
+ *   "0:30"  → 30s = 0.5 min
+ *   "0:05"  → 5s ≈ 0.083 min
+ *   "12:30" → 12m30s = 12.5 min
+ * Returns clamped fractional minutes in (0, MAX_INLINE_DURATION_MIN], or null if unparseable.
+ * Used by Planner's commitEdit so the inline-edit path and the paste path use
+ * the SAME logic (Defect-B fix: the two paths previously diverged).
+ */
+export const MAX_INLINE_DURATION_MIN = 600;
+
+export function parseDurationInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // Colon format first: M:SS
+  if (/^\d{1,3}:\d{2}$/.test(trimmed)) {
+    const result = parseColonDuration(trimmed);
+    if (result !== null) {
+      return Math.min(MAX_INLINE_DURATION_MIN, result);
+    }
+    return null;
+  }
+  // Plain integer (possibly with leading/trailing spaces)
+  const n = parseInt(trimmed, 10);
+  if (!Number.isFinite(n) || n <= 0 || !/^\d+$/.test(trimmed)) return null;
+  return Math.min(MAX_INLINE_DURATION_MIN, Math.max(1, n));
+}
+
 export function parseLine(raw: string): ParsedLine | null {
   const line = raw.trim();
   if (!line) return null;
+
+  // COLON-DURATION GUARD: detect a trailing colon-format token (e.g. "0:05", "1:30", "12:00")
+  // BEFORE running the generic TRAILING_RE which would split the colon and silently merge
+  // the left digit into the item name (the "Keynote 0:05" → name "Keynote 0" bug).
+  // Canonical interpretation: H:MM (hours:minutes). "1:30" = 90 min, "0:45" = 45 min.
+  // Pattern: optional-name + optional-separator + colon-token at end.
+  const colonTrailingMatch = line.match(/^(.*?)\s*[\-–—\s]*(\d{1,3}:\d{2})\s*$/);
+  if (colonTrailingMatch) {
+    const namePart = colonTrailingMatch[1].trim();
+    const colonToken = colonTrailingMatch[2];
+    // Only treat as a duration if the name part is non-empty and non-numeric
+    if (namePart && !/^\d+$/.test(namePart)) {
+      const minutes = parseColonDuration(colonToken);
+      if (minutes !== null) {
+        // Store the echo string so the UI can display "→ 1m 30s" next to the duration.
+        // This makes the M:SS interpretation VISIBLE and never silent.
+        const echo = `→ ${fmtDuration(minutes)}`;
+        return { kind: "item", name: namePart, minutes, raw, colonEchoStr: echo };
+      }
+      // Colon token present but unrecognized → flag as error rather than mangle the name
+      return { kind: "error", raw };
+    }
+    // Standalone colon-format (no name part): flag as error (not a bare duration line)
+    if (!namePart) {
+      const minutes = parseColonDuration(colonToken);
+      // A bare "1:30" with no name → flag as unparseable (ambiguous)
+      if (minutes !== null) {
+        return { kind: "error", raw };
+      }
+    }
+  }
 
   // Try TRAILING pattern first: "Intro 10", "Demo - 20 min", "90 second teaser", "Q&A 1h"
   let m = line.match(TRAILING_RE);
@@ -77,7 +199,7 @@ export function parseLine(raw: string): ParsedLine | null {
     const numStr = m[1];
     const unitStr = (m[2] ?? "").toLowerCase().trim();
     const namePart = m[3].trim();
-    if (namePart) {
+    if (namePart && !/^\d+$/.test(namePart)) {
       const minutes = parseQuantity(numStr, unitStr);
       if (minutes !== null && minutes > 0) {
         const mins = Math.max(1, Math.round(minutes));
@@ -97,7 +219,13 @@ export function parseAgenda(text: string): ParsedLine[] {
 }
 
 export function itemsOf(lines: ParsedLine[]): Item[] {
-  return lines.filter((l): l is Extract<ParsedLine, { kind: "item" }> => l.kind === "item");
+  return lines
+    .filter((l): l is Extract<ParsedLine, { kind: "item" }> => l.kind === "item")
+    .map((l) => {
+      const item: Item = { name: l.name, minutes: l.minutes };
+      if (l.colonEchoStr) item.colonEchoStr = l.colonEchoStr;
+      return item;
+    });
 }
 
 /** Epoch ms for HH:MM on the same calendar day as `ref`. */
@@ -186,10 +314,27 @@ export function driftMinutes(driftMs: number): number {
   return Math.trunc(driftMs / 60_000);
 }
 
+/**
+ * Human-readable drift label with magnitude.
+ * Grace band: |driftMs| < 5 seconds reads as "on time" to absorb sub-tick clock jitter,
+ * while a real 10-second overrun IS surfaced ("10s behind").
+ * Shows seconds when under 1 minute so the value is never "0 min behind/ahead".
+ */
 export function driftLabel(driftMs: number): string {
-  const m = driftMinutes(driftMs);
-  if (m === 0) return "on time";
-  return m < 0 ? `${-m} min ahead` : `${m} min behind`;
+  const GRACE_MS = 5_000; // 5s grace — absorbs clock jitter, shows +10s overruns
+  if (Math.abs(driftMs) < GRACE_MS) return "on time";
+  if (driftMs < 0) {
+    // ahead — negative driftMs
+    const totalSec = Math.round(-driftMs / 1000);
+    if (totalSec < 60) return `${totalSec}s ahead`;
+    const m = Math.floor(totalSec / 60);
+    return `${m} min ahead`;
+  }
+  // behind — positive driftMs
+  const totalSec = Math.round(driftMs / 1000);
+  if (totalSec < 60) return `${totalSec}s behind`;
+  const m = Math.floor(totalSec / 60);
+  return `${m} min behind`;
 }
 
 export function fmtClock(ms: number): string {
